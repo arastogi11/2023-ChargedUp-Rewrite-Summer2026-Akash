@@ -57,14 +57,33 @@ public class DriveCommands {
         .getTranslation();
   }
 
+  // 2023's Ruffy joysticks each had a twist (Z) axis that provided fine translation/strafe
+  // control at 20% speed whenever the main stick was centered (TeleopSwerve.execute():
+  // fineStrafeSup/fineTransSup, scaled by 0.2). Xbox controllers don't have a spare axis per
+  // stick to replicate that exact "twist-when-centered" mechanism, so PRECISION_MIN_SCALAR plays
+  // the same role -- a driver-controlled slowdown for fine positioning -- via a continuous
+  // trigger-axis scalar instead (see joystickDrive's 4-arg overload).
+  private static final double PRECISION_MIN_SCALAR = 0.2;
+
   /**
-   * Field relative drive command using two joysticks (controlling linear and angular velocities).
+   * Field relative drive command using two joysticks (controlling linear and angular velocities),
+   * always at full speed.
+   */
+  public static Command joystickDrive(
+      Drive drive, DoubleSupplier xSupplier, DoubleSupplier ySupplier, DoubleSupplier omegaSupplier) {
+    return joystickDrive(drive, xSupplier, ySupplier, omegaSupplier, () -> 1.0);
+  }
+
+  /**
+   * Field relative drive command using two joysticks, with an additional continuous speed scalar
+   * (1.0 = full speed) for fine/precision control -- see {@link #PRECISION_MIN_SCALAR}.
    */
   public static Command joystickDrive(
       Drive drive,
       DoubleSupplier xSupplier,
       DoubleSupplier ySupplier,
-      DoubleSupplier omegaSupplier) {
+      DoubleSupplier omegaSupplier,
+      DoubleSupplier speedScalarSupplier) {
     return Commands.run(
         () -> {
           // Get linear velocity
@@ -77,12 +96,14 @@ public class DriveCommands {
           // Square rotation value for more precise control
           omega = Math.copySign(omega * omega, omega);
 
+          double speedScalar = MathUtil.clamp(speedScalarSupplier.getAsDouble(), PRECISION_MIN_SCALAR, 1.0);
+
           // Convert to field relative speeds & send command
           ChassisSpeeds speeds =
               new ChassisSpeeds(
-                  linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
-                  linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
-                  omega * drive.getMaxAngularSpeedRadPerSec());
+                  linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec() * speedScalar,
+                  linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec() * speedScalar,
+                  omega * drive.getMaxAngularSpeedRadPerSec() * speedScalar);
           boolean isFlipped =
               DriverStation.getAlliance().isPresent()
                   && DriverStation.getAlliance().get() == Alliance.Red;

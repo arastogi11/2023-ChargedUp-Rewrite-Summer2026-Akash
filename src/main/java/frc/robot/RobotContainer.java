@@ -155,12 +155,18 @@ public class RobotContainer {
 
   /** Button -> command mappings go here. */
   private void configureBindings() {
+    // Right trigger scales speed down continuously for fine positioning (e.g. lining up to
+    // score) -- the Xbox-native equivalent of the 2023 robot's Ruffy joysticks, each of which had
+    // a twist axis providing fine translation/strafe control at a fixed 20% speed whenever the
+    // main stick was centered. Released = full speed, fully pressed = slowest (see
+    // DriveCommands.PRECISION_MIN_SCALAR).
     drive.setDefaultCommand(
         DriveCommands.joystickDrive(
             drive,
             () -> -driverController.getLeftY(),
             () -> -driverController.getLeftX(),
-            () -> -driverController.getRightX()));
+            () -> -driverController.getRightX(),
+            () -> 1.0 - driverController.getRightTriggerAxis()));
 
     driverController.start().onTrue(Commands.runOnce(drive::stopWithX, drive));
 
