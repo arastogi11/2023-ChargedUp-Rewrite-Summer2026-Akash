@@ -7,7 +7,13 @@ package frc.robot.subsystems.leds;
 import edu.wpi.first.wpilibj.motorcontrol.Spark;
 import frc.robot.Constants.LedsConstants;
 
-/** Real hardware IO for a REV Blinkin LED controller driven over PWM. */
+/**
+ * Real hardware IO for a REV Blinkin LED controller driven over PWM.
+ *
+ * <p>{@link Spark} is WPILib's class for any generic PWM-controlled speed controller/actuator --
+ * REV's Blinkin doesn't need its own dedicated WPILib class since it just interprets a standard
+ * PWM signal (the same kind used to command a motor's speed) as a color/pattern selection instead.
+ */
 public class LedsIOSpark implements LedsIO {
   private final Spark leds = new Spark(LedsConstants.pwmPort);
   private double pwmValue = 0.0;

@@ -6,6 +6,14 @@ package frc.robot.subsystems.leds;
 
 import org.littletonrobotics.junction.AutoLog;
 
+/**
+ * Hardware-agnostic interface for the Blinkin LED controller -- see {@code
+ * frc.robot.subsystems.drive.ModuleIO}'s javadoc for the full explanation of the IO-interface
+ * pattern. Much simpler than the other IO interfaces since a REV Blinkin has exactly one control
+ * input (a single PWM signal) and reports nothing back -- there's no sensor to read, only a value
+ * to set, so {@code LedsIOInputs} exists purely so the currently-commanded PWM value shows up in
+ * logs/replay like everything else.
+ */
 public interface LedsIO {
   @AutoLog
   public static class LedsIOInputs {
