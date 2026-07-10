@@ -54,27 +54,13 @@ public class Vision extends SubsystemBase {
       List<Pose2d> posesRejected = new LinkedList<>();
 
       for (var observation : inputs[cameraIndex].poseObservations) {
-        boolean reject =
-            observation.tagCount() == 0
-                || (observation.tagCount() == 1 && observation.ambiguity() > VisionConstants.maxAmbiguity)
-                || observation.avgTagDistMeters() > VisionConstants.maxTagDistanceMeters
-                || observation.pose().getX() < 0.0
-                || observation.pose().getX() > VisionConstants.aprilTagLayout.getFieldLength()
-                || observation.pose().getY() < 0.0
-                || observation.pose().getY() > VisionConstants.aprilTagLayout.getFieldWidth();
-
-        if (reject) {
+        if (VisionConstants.shouldRejectPose(observation)) {
           posesRejected.add(observation.pose());
           continue;
         }
         posesAccepted.add(observation.pose());
 
-        // Continuous distance/tag-count standard-deviation formula (2025 Reefscape, restored
-        // here vs. the flat baseline currently active in 177-Rebuilt's 2026 template).
-        double xyStdDev =
-            VisionConstants.xyStdDevCoefficient
-                * observation.avgTagDistMeters()
-                / Math.sqrt(observation.tagCount());
+        double xyStdDev = VisionConstants.xyStdDev(observation);
         Matrix<N3, N1> stdDevs = VecBuilder.fill(xyStdDev, xyStdDev, VisionConstants.thetaStdDev);
 
         consumer.accept(observation.pose(), observation.timestamp(), stdDevs);

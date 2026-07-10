@@ -54,4 +54,24 @@ public class VisionConstants {
     new CameraConfig("limelight-front", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
     new CameraConfig("limelight-back", 0.0, 0.0, 0.0, 0.0, 0.0, 180.0),
   };
+
+  /**
+   * Pure reject-pose function, pulled out of {@link Vision#periodic()} so it's unit-testable
+   * without NetworkTables/hardware -- see class javadoc for what each threshold does and where it
+   * came from.
+   */
+  public static boolean shouldRejectPose(VisionIO.PoseObservation observation) {
+    return observation.tagCount() == 0
+        || (observation.tagCount() == 1 && observation.ambiguity() > maxAmbiguity)
+        || observation.avgTagDistMeters() > maxTagDistanceMeters
+        || observation.pose().getX() < 0.0
+        || observation.pose().getX() > aprilTagLayout.getFieldLength()
+        || observation.pose().getY() < 0.0
+        || observation.pose().getY() > aprilTagLayout.getFieldWidth();
+  }
+
+  /** Continuous distance/tag-count standard-deviation formula (2025 Reefscape). */
+  public static double xyStdDev(VisionIO.PoseObservation observation) {
+    return xyStdDevCoefficient * observation.avgTagDistMeters() / Math.sqrt(observation.tagCount());
+  }
 }
