@@ -8,6 +8,7 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import frc.robot.commands.DriveCommands;
+import frc.robot.commands.ScoringCommands;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.arm.Arm;
 import frc.robot.subsystems.arm.ArmIO;
@@ -129,29 +130,27 @@ public class RobotContainer {
 
     driverController.start().onTrue(Commands.runOnce(drive::stopWithX, drive));
 
-    // Placeholder mechanism bindings -- expanded into full scoring sequences in a later phase.
-    operatorController
-        .a()
-        .onTrue(
-            Commands.runOnce(() -> elevator.setGoal(Elevator.Position.BOTTOM), elevator)
-                .alongWith(Commands.runOnce(() -> arm.setGoal(Arm.Position.STARTING), arm))
-                .alongWith(Commands.runOnce(() -> wrist.setGoal(Wrist.Position.STARTING), wrist)));
-    operatorController
-        .x()
-        .onTrue(
-            Commands.runOnce(() -> elevator.setGoal(Elevator.Position.MID), elevator)
-                .alongWith(Commands.runOnce(() -> arm.setGoal(Arm.Position.MID_SCORE), arm))
-                .alongWith(Commands.runOnce(() -> wrist.setGoal(Wrist.Position.MID_SCORE), wrist)));
-    operatorController
-        .y()
-        .onTrue(
-            Commands.runOnce(() -> elevator.setGoal(Elevator.Position.HIGH), elevator)
-                .alongWith(Commands.runOnce(() -> arm.setGoal(Arm.Position.HIGH_SCORE), arm))
-                .alongWith(
-                    Commands.runOnce(() -> wrist.setGoal(Wrist.Position.HIGH_SCORE), wrist)));
+    // Scoring positions
+    operatorController.a().onTrue(ScoringCommands.stow(elevator, arm, wrist));
+    operatorController.x().onTrue(ScoringCommands.prepScoreMid(elevator, arm, wrist));
+    operatorController.y().onTrue(ScoringCommands.prepScoreHigh(elevator, arm, wrist));
 
-    operatorController.rightTrigger().whileTrue(Commands.startEnd(intake::runIn, intake::stop, intake));
-    operatorController.leftTrigger().whileTrue(Commands.startEnd(intake::runOut, intake::stop, intake));
+    // Pickup sequences -- move to position and intake until a game piece is secured
+    operatorController.b().onTrue(ScoringCommands.groundPickup(elevator, arm, wrist, intake));
+    operatorController.leftBumper().onTrue(ScoringCommands.chutePickup(elevator, arm, wrist, intake));
+    operatorController.rightBumper().onTrue(ScoringCommands.shelfPickup(elevator, arm, wrist, intake));
+
+    // Release the held game piece at whatever scoring position is currently active
+    operatorController.rightTrigger().onTrue(ScoringCommands.release(intake));
+    // Manual intake override, for de-jamming or off-nominal pickups
+    operatorController.leftTrigger().whileTrue(Commands.startEnd(intake::runIn, intake::stop, intake));
+
+    // Held game-piece type indicator -- 2023's intake current thresholds never actually
+    // distinguished cone vs. cube (both were 20A), so the operator declares it explicitly, same
+    // as the original driver-facing behavior.
+    operatorController.povUp().onTrue(Commands.runOnce(leds::setYellow)); // cone
+    operatorController.povDown().onTrue(Commands.runOnce(leds::setPurple)); // cube
+    operatorController.back().onTrue(Commands.runOnce(leds::off));
   }
 
   /**
