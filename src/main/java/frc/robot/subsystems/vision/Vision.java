@@ -15,17 +15,30 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import java.util.LinkedList;
 import java.util.List;
 import org.littletonrobotics.junction.Logger;
+import org.littletonrobotics.junction.networktables.LoggedNetworkBoolean;
 
 /**
  * Fuses one or more Limelights' pose observations into the drivetrain's pose estimator, gated by
  * the reject-pose "throwout" logic the user wanted carried forward from 2024/2025 -- see {@link
  * VisionConstants} javadoc for exactly which idea came from which season.
+ *
+ * <p>The physical 2023 robot currently has its Limelights removed, so this subsystem is
+ * dashboard-toggleable (default OFF) rather than always-on -- see {@link #enabled}. Camera IO is
+ * NetworkTables-based and already null/zero-tag-safe with no cameras present, so nothing here
+ * would actually crash without the toggle; it exists so the driver has explicit, visible control
+ * over whether vision is contributing to the pose estimate, and so the "disconnected" alerts don't
+ * spam the dashboard for hardware that's intentionally absent.
  */
 public class Vision extends SubsystemBase {
   private final VisionConsumer consumer;
   private final VisionIO[] io;
   private final VisionIOInputsAutoLogged[] inputs;
   private final Alert[] disconnectedAlerts;
+
+  // Published at a plain NetworkTables path (not "/SmartDashboard/...") so it shows up as a
+  // regular NT4 topic in Elastic without depending on the legacy SmartDashboard/Shuffleboard
+  // Java APIs. Bind it to a toggle-switch widget in the Elastic layout.
+  private final LoggedNetworkBoolean enabled = new LoggedNetworkBoolean("/DriverDashboard/VisionEnabled", false);
 
   public Vision(VisionConsumer consumer, VisionIO... io) {
     this.consumer = consumer;
@@ -42,6 +55,15 @@ public class Vision extends SubsystemBase {
 
   @Override
   public void periodic() {
+    Logger.recordOutput("Vision/Enabled", enabled.get());
+    if (!enabled.get()) {
+      // Don't poll cameras or show "disconnected" warnings for hardware that's intentionally off.
+      for (Alert alert : disconnectedAlerts) {
+        alert.set(false);
+      }
+      return;
+    }
+
     List<Pose2d> allPosesAccepted = new LinkedList<>();
     List<Pose2d> allPosesRejected = new LinkedList<>();
 

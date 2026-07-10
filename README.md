@@ -37,6 +37,28 @@ implementation, and an `XyzIOSim` physics-sim implementation, selected in `Robot
 | Vision | `subsystems.vision` | Dual Limelight, MegaTag2, restored 2025-validated throwout logic |
 | Commands | `commands` | Flat factory-style (`DriveCommands`, `ScoringCommands`), replacing the 2023 robot's deeply nested subclassed-`Command` folders |
 
+## Dashboard: Elastic only
+
+This project targets [Elastic](https://github.com/Gold872/elastic-dashboard) exclusively — no
+SmartDashboard or Shuffleboard usage anywhere in the codebase. All telemetry goes through
+AdvantageKit's `Logger` (NT4 + on-robot logging) or `LoggedNetworkBoolean`/`LoggedNetworkNumber`
+for dashboard-writable values, both of which publish plain NT4 topics that Elastic can bind
+directly — no legacy dashboard Java APIs involved.
+
+The physical 2023 robot currently has its **Limelights and LEDs removed**. Rather than relying on
+those subsystems' existing NT-based null/zero-tag safety (which already prevents crashes with no
+hardware present), both are **dashboard-toggleable and default OFF**:
+
+- `/DriverDashboard/VisionEnabled` (`Vision.java`) — while off, cameras aren't polled and their
+  "disconnected" alerts are suppressed, so the dashboard doesn't nag about hardware that's
+  intentionally absent.
+- `/DriverDashboard/LedsEnabled` (`Leds.java`) — while off, every color command is a no-op and the
+  Blinkin PWM output is forced to "black" every loop.
+
+Add a toggle-switch widget bound to each of those two NT4 boolean topics in your Elastic layout
+(drag them in from the NT4 topic tree — Elastic doesn't require any special widget config or
+project-side layout file for this). Flip them on once the hardware is reinstalled.
+
 ## Known bugs fixed (not carried forward)
 
 - **Arm/Wrist duplicated control loop**: the 2023 robot configured Motion Magic gains on the
