@@ -32,7 +32,12 @@ public class IntakeIOTalonFX implements IntakeIO {
 
   public IntakeIOTalonFX() {
     var config = new TalonFXConfiguration();
+    // Brake mode keeps a held game piece pinched between the rollers instead of it potentially
+    // rolling free the instant the intake stops being actively driven.
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+    // Chosen so that IntakeConstants.intakePercent (positive) actually pulls a game piece in --
+    // see Constants.IntakeConstants' comment on why the sign convention was flipped relative to
+    // the 2023 source during the rewrite.
     config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
     config.CurrentLimits.StatorCurrentLimit = IntakeConstants.statorCurrentLimitAmps;
     config.CurrentLimits.StatorCurrentLimitEnable = true;

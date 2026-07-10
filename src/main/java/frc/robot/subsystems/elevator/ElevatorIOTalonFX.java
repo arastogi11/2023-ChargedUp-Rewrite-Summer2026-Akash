@@ -43,6 +43,7 @@ public class ElevatorIOTalonFX implements ElevatorIO {
 
   public ElevatorIOTalonFX() {
     var config = new TalonFXConfiguration();
+    // Brake mode so the elevator doesn't free-fall under gravity the instant it's disabled.
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     config.Slot0 = ElevatorConstants.gains;
     config.MotionMagic.MotionMagicCruiseVelocity = ElevatorConstants.motionMagicCruiseVelocityRotPerSec;
@@ -51,6 +52,8 @@ public class ElevatorIOTalonFX implements ElevatorIO {
     config.CurrentLimits.StatorCurrentLimitEnable = true;
     tryUntilOk(5, () -> motor.getConfigurator().apply(config, 0.25));
 
+    // No high-frequency odometry needed here (that's a drivetrain-only concern -- position
+    // tracking for pose estimation), so a plain 50Hz update rate for every signal is enough.
     BaseStatusSignal.setUpdateFrequencyForAll(50.0, position, velocity, appliedVolts, current);
     motor.optimizeBusUtilization();
   }

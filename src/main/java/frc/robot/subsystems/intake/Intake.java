@@ -8,6 +8,11 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.IntakeConstants;
 import org.littletonrobotics.junction.Logger;
 
+/**
+ * The intake subsystem: a simple roller mechanism (no closed-loop position control) that grabs
+ * and releases game pieces. "Detecting" a held game piece is done crudely, via stator current --
+ * see {@link #gamePieceSecured()}.
+ */
 public class Intake extends SubsystemBase {
   private final IntakeIO io;
   private final IntakeIOInputsAutoLogged inputs = new IntakeIOInputsAutoLogged();

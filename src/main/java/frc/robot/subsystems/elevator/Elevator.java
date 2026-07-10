@@ -8,7 +8,14 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.ElevatorConstants;
 import org.littletonrobotics.junction.Logger;
 
+/**
+ * The elevator subsystem: a single linear-motion mechanism the arm/wrist/intake ride on, used to
+ * change scoring height. Written entirely against the {@link ElevatorIO} interface, so it works
+ * identically whether {@code io} is talking to real hardware or a physics simulation -- see {@code
+ * frc.robot.subsystems.drive.ModuleIO}'s javadoc for the full explanation of that pattern.
+ */
 public class Elevator extends SubsystemBase {
+  /** Named heights the elevator can be commanded to, each backed by a tuned rotation count. */
   public enum Position {
     BOTTOM(ElevatorConstants.bottomPositionRotations),
     MID(ElevatorConstants.midPositionRotations),
@@ -23,6 +30,11 @@ public class Elevator extends SubsystemBase {
   }
 
   private final ElevatorIO io;
+  // AdvantageKit's annotation processor generates this class at build time from
+  // ElevatorIO.ElevatorIOInputs (the @AutoLog-annotated class) -- it's an automatically-loggable,
+  // automatically-replayable version of the plain inputs struct. You won't find
+  // ElevatorIOInputsAutoLogged.java anywhere in this source tree; it's generated fresh on every
+  // build.
   private final ElevatorIOInputsAutoLogged inputs = new ElevatorIOInputsAutoLogged();
 
   public Elevator(ElevatorIO io) {

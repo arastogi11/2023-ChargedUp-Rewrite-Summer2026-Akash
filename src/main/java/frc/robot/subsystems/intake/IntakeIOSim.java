@@ -10,7 +10,13 @@ import edu.wpi.first.math.system.plant.LinearSystemId;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 
-/** Physics-sim IO for the intake roller, backed by WPILib's DCMotorSim. */
+/**
+ * Physics-sim IO for the intake roller, backed by WPILib's {@link DCMotorSim} -- a simpler model
+ * than the elevator/arm/wrist's sims since a roller has no gravity/position dependence, just
+ * inertia. There's no simulated "detects a game piece" behavior, since the real detection
+ * ({@code Intake.gamePieceSecured()}) works off stall current, which this sim doesn't model (a
+ * simulated roller never actually stalls against anything).
+ */
 public class IntakeIOSim implements IntakeIO {
   private static final double GEARING = 3.0;
   private static final double MOI_KG_M2 = 0.001;

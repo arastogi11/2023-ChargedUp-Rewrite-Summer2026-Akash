@@ -6,6 +6,12 @@ package frc.robot.subsystems.elevator;
 
 import org.littletonrobotics.junction.AutoLog;
 
+/**
+ * Hardware-agnostic interface for the elevator -- see {@code
+ * frc.robot.subsystems.drive.ModuleIO}'s javadoc for a full explanation of the IO-interface
+ * pattern every subsystem in this codebase follows (real vs. sim implementations, {@code @AutoLog}
+ * inputs, REPLAY-mode no-ops).
+ */
 public interface ElevatorIO {
   @AutoLog
   public static class ElevatorIOInputs {
@@ -14,6 +20,8 @@ public interface ElevatorIO {
     public double velocityRotPerSec = 0.0;
     public double appliedVolts = 0.0;
     public double currentAmps = 0.0;
+    // Hard-stop limit switches at the bottom and top of elevator travel -- used to auto-zero the
+    // encoder (see Elevator.periodic()) and could be used to clamp commanded positions.
     public boolean atBottomLimit = false;
     public boolean atTopLimit = false;
   }

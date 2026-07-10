@@ -13,7 +13,11 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.simulation.SingleJointedArmSim;
 import frc.robot.Constants.WristConstants;
 
-/** Physics-sim IO for the wrist, backed by WPILib's SingleJointedArmSim. */
+/**
+ * Physics-sim IO for the wrist, backed by WPILib's {@link SingleJointedArmSim} -- same modeling
+ * approach as {@code ArmIOSim} (the wrist is mechanically also a single-jointed pivot, just
+ * mounted on the end of the arm rather than directly on the robot chassis).
+ */
 public class WristIOSim implements WristIO {
   // Placeholder mechanism geometry -- not captured in the 2023 robot's Constants.java.
   private static final double WRIST_LENGTH_METERS = Units.inchesToMeters(10);

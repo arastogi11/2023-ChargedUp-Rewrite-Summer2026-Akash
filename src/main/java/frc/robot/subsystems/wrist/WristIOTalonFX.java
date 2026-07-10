@@ -45,12 +45,15 @@ public class WristIOTalonFX implements WristIO {
   private final Debouncer connectedDebounce = new Debouncer(0.5, Debouncer.DebounceType.kFalling);
 
   public WristIOTalonFX() {
+    // Negated to match the 2023 source's configMagnetOffset(-wristOffset) call -- see
+    // ArmIOTalonFX's constructor comment for the same detail on the arm's CANcoder.
     var cancoderConfig = new CANcoderConfiguration();
     cancoderConfig.MagnetSensor.MagnetOffset = -WristConstants.magnetOffsetRotations;
     cancoderConfig.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
     cancoder.getConfigurator().apply(cancoderConfig);
 
     var config = new TalonFXConfiguration();
+    // Brake mode so the wrist doesn't flop under gravity when disabled.
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     config.Slot0 = WristConstants.gains;
     config.Feedback.FeedbackRemoteSensorID = WristConstants.cancoderId;

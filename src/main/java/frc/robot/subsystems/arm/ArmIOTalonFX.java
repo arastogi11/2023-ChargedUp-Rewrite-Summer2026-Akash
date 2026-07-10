@@ -48,18 +48,25 @@ public class ArmIOTalonFX implements ArmIO {
   private final Debouncer connectedDebounce = new Debouncer(0.5, Debouncer.DebounceType.kFalling);
 
   public ArmIOTalonFX() {
+    // The magnet offset is negated here (compare Constants.ArmConstants.magnetOffsetRotations,
+    // which is positive) because the 2023 source applied it as `configMagnetOffset(-armOffset)` --
+    // preserved as-is to match the physical CANcoder's actual mounted orientation.
     var cancoderConfig = new CANcoderConfiguration();
     cancoderConfig.MagnetSensor.MagnetOffset = -ArmConstants.magnetOffsetRotations;
     cancoderConfig.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
     cancoder.getConfigurator().apply(cancoderConfig);
 
     var config = new TalonFXConfiguration();
+    // Brake mode so the arm doesn't drop under gravity when disabled.
     config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     config.MotorOutput.Inverted =
         ArmConstants.motorInverted
             ? InvertedValue.Clockwise_Positive
             : InvertedValue.CounterClockwise_Positive;
     config.Slot0 = ArmConstants.gains;
+    // RemoteCANcoder (vs. the swerve turn motors' FusedCANcoder) means position comes purely from
+    // the CANcoder, not blended with the motor's own rotor sensor -- simpler, and appropriate here
+    // since (unlike a swerve module) there's no need to also track very-high-frequency motion.
     config.Feedback.FeedbackRemoteSensorID = ArmConstants.cancoderId;
     config.Feedback.FeedbackSensorSource = FeedbackSensorSourceValue.RemoteCANcoder;
     config.Feedback.RotorToSensorRatio = ArmConstants.rotorToSensorRatio;

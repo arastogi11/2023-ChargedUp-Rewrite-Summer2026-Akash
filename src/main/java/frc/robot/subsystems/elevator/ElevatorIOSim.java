@@ -13,7 +13,16 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.simulation.ElevatorSim;
 import frc.robot.Constants.ElevatorConstants;
 
-/** Physics-sim IO for the elevator, backed by WPILib's ElevatorSim. */
+/**
+ * Physics-sim IO for the elevator, backed by WPILib's {@link ElevatorSim}.
+ *
+ * <p>Like {@code ModuleIOSim}, this runs its own software closed loop (a {@link
+ * ProfiledPIDController}, WPILib's equivalent of Motion Magic -- a PID controller wrapped around a
+ * trapezoidal motion profile, same shape of behavior as the real motor's onboard Motion Magic) plus
+ * an {@link ElevatorFeedforward} (the elevator-specific feedforward model: kS for static friction,
+ * kG for the constant force needed just to hold the elevator up against gravity, kV for velocity)
+ * since there's no real motor controller here to delegate the closed loop to.
+ */
 public class ElevatorIOSim implements ElevatorIO {
   // Placeholder mechanism geometry -- the 2023 robot's CAD (drum radius, carriage mass) wasn't
   // captured in its Constants.java, so these are reasonable stand-ins for a single-stage FRC

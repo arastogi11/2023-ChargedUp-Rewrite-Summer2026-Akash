@@ -8,7 +8,13 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.ArmConstants;
 import org.littletonrobotics.junction.Logger;
 
+/**
+ * The arm subsystem: a single-jointed pivoting arm that extends the intake out from the robot for
+ * pickups and scoring. See {@code ArmIOTalonFX}'s javadoc for the control-loop bug this rewrite
+ * fixes relative to the 2023 robot.
+ */
 public class Arm extends SubsystemBase {
+  /** Named arm angles for each pickup/scoring/carry position. */
   public enum Position {
     STARTING(ArmConstants.startingPositionRotations),
     GROUND_PICKUP(ArmConstants.groundPickupPositionRotations),

@@ -203,7 +203,11 @@ public final class Constants {
     // values, so the 2023 code never actually distinguished cone vs. cube by current either).
     public static final double gamePieceCurrentThresholdAmps = 20;
 
-    // Open-loop percent-output speeds (-1.0 to 1.0) for each named intake action.
+    // Open-loop percent-output speeds (-1.0 to 1.0) for each named intake action. Positive =
+    // pulling a game piece in -- the 2023 source had this backwards (intakeIn was negative,
+    // compensated for by a matching motor inversion), flipped here to the more intuitive
+    // convention now that IntakeIOTalonFX's own InvertedValue setting is what makes "positive =
+    // in" physically correct instead.
     public static final double intakePercent = 0.9;
     public static final double intakeSlowPercent = 0.06;
     public static final double outtakePercent = 0.4;

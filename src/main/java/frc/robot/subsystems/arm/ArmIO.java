@@ -6,6 +6,11 @@ package frc.robot.subsystems.arm;
 
 import org.littletonrobotics.junction.AutoLog;
 
+/**
+ * Hardware-agnostic interface for the arm -- see {@code
+ * frc.robot.subsystems.drive.ModuleIO}'s javadoc for the full explanation of the IO-interface
+ * pattern.
+ */
 public interface ArmIO {
   @AutoLog
   public static class ArmIOInputs {

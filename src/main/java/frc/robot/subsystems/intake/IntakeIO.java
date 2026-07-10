@@ -6,6 +6,13 @@ package frc.robot.subsystems.intake;
 
 import org.littletonrobotics.junction.AutoLog;
 
+/**
+ * Hardware-agnostic interface for the intake roller -- see {@code
+ * frc.robot.subsystems.drive.ModuleIO}'s javadoc for the full explanation of the IO-interface
+ * pattern. Unlike the other mechanisms, the intake has no closed-loop position control (it's just
+ * a roller run open-loop in or out) and no CANcoder -- {@code currentAmps} below doubles as its
+ * only "sensor," used by {@code Intake.gamePieceSecured()} to detect a held game piece.
+ */
 public interface IntakeIO {
   @AutoLog
   public static class IntakeIOInputs {

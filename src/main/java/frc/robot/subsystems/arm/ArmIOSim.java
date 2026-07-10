@@ -13,7 +13,14 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.simulation.SingleJointedArmSim;
 import frc.robot.Constants.ArmConstants;
 
-/** Physics-sim IO for the arm, backed by WPILib's SingleJointedArmSim. */
+/**
+ * Physics-sim IO for the arm, backed by WPILib's {@link SingleJointedArmSim} -- models a rigid arm
+ * pivoting around a single motor-driven joint, including the effect of gravity torque changing
+ * with angle (which is why this needs an {@link ArmFeedforward}, with its own gravity term,
+ * instead of the simpler {@code ElevatorFeedforward} used for the linear-motion elevator). Same
+ * software-closed-loop-instead-of-real-onboard-loop idea as {@code ElevatorIOSim} -- see its
+ * javadoc.
+ */
 public class ArmIOSim implements ArmIO {
   // Placeholder mechanism geometry -- arm length/moment of inertia weren't captured in the 2023
   // robot's Constants.java; reasonable stand-ins for a single-jointed FRC scoring arm.

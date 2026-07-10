@@ -8,7 +8,13 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.WristConstants;
 import org.littletonrobotics.junction.Logger;
 
+/**
+ * The wrist subsystem: a single-jointed pivot mounted at the end of the arm that angles the
+ * intake to line up with the game piece or scoring target. See {@code ArmIOTalonFX}'s javadoc for
+ * the control-loop bug this rewrite fixes (same fix applies here).
+ */
 public class Wrist extends SubsystemBase {
+  /** Named wrist angles for each pickup/scoring/carry position. */
   public enum Position {
     STARTING(WristConstants.startingPositionRotations),
     GROUND_PICKUP(WristConstants.groundPickupPositionRotations),
