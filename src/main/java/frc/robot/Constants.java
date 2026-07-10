@@ -128,6 +128,24 @@ public final class Constants {
     public static final double autoCarryPositionRotations = 322.0 / 360.0;
   }
 
+  /**
+   * Carried over from the 2023 robot's {@code Constants.LEDConstants} / {@code
+   * BlinkinLEDs.java}. See {@link frc.robot.subsystems.leds.Leds} javadoc for why {@code
+   * turnOff()} no longer touches the PDH.
+   */
+  public static final class LedsConstants {
+    private LedsConstants() {}
+
+    public static final int pwmPort = 0;
+
+    public static final double blackPwm = 0.99;
+    public static final double yellowPwm = 0.69;
+    public static final double purplePwm = 0.91;
+    public static final double greenPwm = -0.05;
+    public static final double blinkPurplePwm = 0.15;
+    public static final double blinkYellowPwm = -0.07;
+  }
+
   /** Carried over from the 2023 robot's {@code Constants.intakeMotorID} and {@code Intake.java}. */
   public static final class IntakeConstants {
     private IntakeConstants() {}

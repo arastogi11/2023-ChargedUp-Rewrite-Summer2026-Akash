@@ -27,6 +27,10 @@ import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.intake.IntakeIO;
 import frc.robot.subsystems.intake.IntakeIOSim;
 import frc.robot.subsystems.intake.IntakeIOTalonFX;
+import frc.robot.subsystems.leds.Leds;
+import frc.robot.subsystems.leds.LedsIO;
+import frc.robot.subsystems.leds.LedsIOSim;
+import frc.robot.subsystems.leds.LedsIOSpark;
 import frc.robot.subsystems.wrist.Wrist;
 import frc.robot.subsystems.wrist.WristIO;
 import frc.robot.subsystems.wrist.WristIOSim;
@@ -47,6 +51,7 @@ public class RobotContainer {
   private final Arm arm;
   private final Wrist wrist;
   private final Intake intake;
+  private final Leds leds;
 
   // Controllers (team now uses Xbox controllers, replacing the 2023 robot's raw Joysticks +
   // button board)
@@ -68,6 +73,7 @@ public class RobotContainer {
         arm = new Arm(new ArmIOTalonFX());
         wrist = new Wrist(new WristIOTalonFX());
         intake = new Intake(new IntakeIOTalonFX());
+        leds = new Leds(new LedsIOSpark());
       }
       case SIM -> {
         // Sim robot, instantiate physics sim IO implementations
@@ -82,6 +88,7 @@ public class RobotContainer {
         arm = new Arm(new ArmIOSim());
         wrist = new Wrist(new WristIOSim());
         intake = new Intake(new IntakeIOSim());
+        leds = new Leds(new LedsIOSim());
       }
       default -> {
         // Replayed robot, disable IO implementations
@@ -92,6 +99,7 @@ public class RobotContainer {
         arm = new Arm(new ArmIO() {});
         wrist = new Wrist(new WristIO() {});
         intake = new Intake(new IntakeIO() {});
+        leds = new Leds(new LedsIO() {});
       }
     }
 
