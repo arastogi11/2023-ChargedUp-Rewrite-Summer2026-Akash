@@ -8,13 +8,29 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import frc.robot.commands.DriveCommands;
+import frc.robot.generated.TunerConstants;
+import frc.robot.subsystems.arm.Arm;
+import frc.robot.subsystems.arm.ArmIO;
+import frc.robot.subsystems.arm.ArmIOSim;
+import frc.robot.subsystems.arm.ArmIOTalonFX;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.drive.GyroIO;
 import frc.robot.subsystems.drive.GyroIOPigeon2;
 import frc.robot.subsystems.drive.ModuleIO;
 import frc.robot.subsystems.drive.ModuleIOSim;
 import frc.robot.subsystems.drive.ModuleIOTalonFX;
-import frc.robot.generated.TunerConstants;
+import frc.robot.subsystems.elevator.Elevator;
+import frc.robot.subsystems.elevator.ElevatorIO;
+import frc.robot.subsystems.elevator.ElevatorIOSim;
+import frc.robot.subsystems.elevator.ElevatorIOTalonFX;
+import frc.robot.subsystems.intake.Intake;
+import frc.robot.subsystems.intake.IntakeIO;
+import frc.robot.subsystems.intake.IntakeIOSim;
+import frc.robot.subsystems.intake.IntakeIOTalonFX;
+import frc.robot.subsystems.wrist.Wrist;
+import frc.robot.subsystems.wrist.WristIO;
+import frc.robot.subsystems.wrist.WristIOSim;
+import frc.robot.subsystems.wrist.WristIOTalonFX;
 
 /**
  * This class is where the bulk of the robot should be declared. Since Command-based is a
@@ -27,9 +43,15 @@ import frc.robot.generated.TunerConstants;
  */
 public class RobotContainer {
   private final Drive drive;
+  private final Elevator elevator;
+  private final Arm arm;
+  private final Wrist wrist;
+  private final Intake intake;
 
-  // Controller (team now uses Xbox controllers, replacing the 2023 robot's raw Joysticks)
+  // Controllers (team now uses Xbox controllers, replacing the 2023 robot's raw Joysticks +
+  // button board)
   private final CommandXboxController driverController = new CommandXboxController(0);
+  private final CommandXboxController operatorController = new CommandXboxController(1);
 
   public RobotContainer() {
     switch (Constants.currentMode) {
@@ -42,6 +64,10 @@ public class RobotContainer {
                 new ModuleIOTalonFX(TunerConstants.FrontRight),
                 new ModuleIOTalonFX(TunerConstants.BackLeft),
                 new ModuleIOTalonFX(TunerConstants.BackRight));
+        elevator = new Elevator(new ElevatorIOTalonFX());
+        arm = new Arm(new ArmIOTalonFX());
+        wrist = new Wrist(new WristIOTalonFX());
+        intake = new Intake(new IntakeIOTalonFX());
       }
       case SIM -> {
         // Sim robot, instantiate physics sim IO implementations
@@ -52,10 +78,20 @@ public class RobotContainer {
                 new ModuleIOSim(TunerConstants.FrontRight),
                 new ModuleIOSim(TunerConstants.BackLeft),
                 new ModuleIOSim(TunerConstants.BackRight));
+        elevator = new Elevator(new ElevatorIOSim());
+        arm = new Arm(new ArmIOSim());
+        wrist = new Wrist(new WristIOSim());
+        intake = new Intake(new IntakeIOSim());
       }
       default -> {
         // Replayed robot, disable IO implementations
-        drive = new Drive(new GyroIO() {}, new ModuleIO() {}, new ModuleIO() {}, new ModuleIO() {}, new ModuleIO() {});
+        drive =
+            new Drive(
+                new GyroIO() {}, new ModuleIO() {}, new ModuleIO() {}, new ModuleIO() {}, new ModuleIO() {});
+        elevator = new Elevator(new ElevatorIO() {});
+        arm = new Arm(new ArmIO() {});
+        wrist = new Wrist(new WristIO() {});
+        intake = new Intake(new IntakeIO() {});
       }
     }
 
@@ -72,6 +108,30 @@ public class RobotContainer {
             () -> -driverController.getRightX()));
 
     driverController.start().onTrue(Commands.runOnce(drive::stopWithX, drive));
+
+    // Placeholder mechanism bindings -- expanded into full scoring sequences in a later phase.
+    operatorController
+        .a()
+        .onTrue(
+            Commands.runOnce(() -> elevator.setGoal(Elevator.Position.BOTTOM), elevator)
+                .alongWith(Commands.runOnce(() -> arm.setGoal(Arm.Position.STARTING), arm))
+                .alongWith(Commands.runOnce(() -> wrist.setGoal(Wrist.Position.STARTING), wrist)));
+    operatorController
+        .x()
+        .onTrue(
+            Commands.runOnce(() -> elevator.setGoal(Elevator.Position.MID), elevator)
+                .alongWith(Commands.runOnce(() -> arm.setGoal(Arm.Position.MID_SCORE), arm))
+                .alongWith(Commands.runOnce(() -> wrist.setGoal(Wrist.Position.MID_SCORE), wrist)));
+    operatorController
+        .y()
+        .onTrue(
+            Commands.runOnce(() -> elevator.setGoal(Elevator.Position.HIGH), elevator)
+                .alongWith(Commands.runOnce(() -> arm.setGoal(Arm.Position.HIGH_SCORE), arm))
+                .alongWith(
+                    Commands.runOnce(() -> wrist.setGoal(Wrist.Position.HIGH_SCORE), wrist)));
+
+    operatorController.rightTrigger().whileTrue(Commands.startEnd(intake::runIn, intake::stop, intake));
+    operatorController.leftTrigger().whileTrue(Commands.startEnd(intake::runOut, intake::stop, intake));
   }
 
   /**
