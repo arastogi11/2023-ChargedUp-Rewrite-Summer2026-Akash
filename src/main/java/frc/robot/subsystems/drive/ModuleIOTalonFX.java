@@ -100,7 +100,11 @@ public class ModuleIOTalonFX implements ModuleIO {
     turnTalon = new TalonFX(constants.SteerMotorId, TunerConstants.kCANBus);
     cancoder = new CANcoder(constants.EncoderId, TunerConstants.kCANBus);
 
-    // Configure drive motor
+    // Configure drive motor. NeutralMode.Brake resists being pushed when not actively driven
+    // (vs. Coast, which spins freely) -- important for a drive motor so the robot doesn't roll
+    // away when disabled. SensorToMechanismRatio tells the TalonFX about the gearbox between its
+    // rotor and the wheel, so position/velocity signals come out already converted to wheel-space
+    // rotations rather than raw motor rotations.
     var driveConfig = constants.DriveMotorInitialConfigs;
     driveConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     driveConfig.Slot0 = constants.DriveMotorGains;
@@ -115,14 +119,27 @@ public class ModuleIOTalonFX implements ModuleIO {
             : InvertedValue.CounterClockwise_Positive;
     driveConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
     driveConfig.CurrentLimits.SupplyCurrentLimit = 60;
+    // tryUntilOk retries a Phoenix6 config call up to 5 times -- CAN config writes occasionally
+    // drop, and silently accepting a failed config would leave the motor running with wrong
+    // settings, so this is worth the small startup delay.
     tryUntilOk(5, () -> driveTalon.getConfigurator().apply(driveConfig, 0.25));
+    // Zero the drive encoder at startup, so "distance traveled" always starts from wherever the
+    // robot happens to be powered on, not from some leftover value in the motor's memory.
     tryUntilOk(5, () -> driveTalon.setPosition(0.0, 0.25));
 
-    // Configure turn motor
+    // Configure turn (steer) motor. The key difference from the drive motor: this one reads its
+    // position from the *CANcoder* (a remote sensor) rather than its own internal rotor sensor --
+    // see the FeedbackSensorSource switch below for why.
     var turnConfig = new TalonFXConfiguration();
     turnConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     turnConfig.Slot0 = constants.SteerMotorGains;
     turnConfig.Feedback.FeedbackRemoteSensorID = constants.EncoderId;
+    // The steer motor's own internal rotor sensor is only reliable relative to wherever it
+    // happened to be when the robot last powered on -- it has no idea which way the wheel is
+    // actually pointed. The CANcoder, by contrast, is a magnetic *absolute* encoder: it reads true
+    // physical angle immediately, even right after power-on, with no homing routine needed.
+    // "Fused" mode blends the CANcoder's absolute-but-slower-updating reading with the rotor's
+    // fast-but-relative one for the best of both; "Remote" uses the CANcoder alone.
     turnConfig.Feedback.FeedbackSensorSource =
         switch (constants.FeedbackSource) {
           case RemoteCANcoder -> FeedbackSensorSourceValue.RemoteCANcoder;
@@ -136,11 +153,20 @@ public class ModuleIOTalonFX implements ModuleIO {
                       + " https://docs.advantagekit.org/getting-started/template-projects/talonfx-swerve-template#custom-module-implementations");
         };
     turnConfig.Feedback.RotorToSensorRatio = constants.SteerMotorGearRatio;
+    // Motion Magic Expo is a variant of Motion Magic (see Constants.ElevatorConstants javadoc for
+    // what Motion Magic is) tuned via kV/kA feedforward terms instead of a fixed
+    // cruise-velocity/acceleration pair -- it lets the profile accelerate as fast as the motor
+    // physically can rather than an arbitrary capped rate, which matters more for a
+    // quick-to-respond steer axis than a drive axis.
     turnConfig.MotionMagic.MotionMagicCruiseVelocity = 100.0 / constants.SteerMotorGearRatio;
     turnConfig.MotionMagic.MotionMagicAcceleration =
         turnConfig.MotionMagic.MotionMagicCruiseVelocity / 0.100;
     turnConfig.MotionMagic.MotionMagicExpo_kV = 0.12 * constants.SteerMotorGearRatio;
     turnConfig.MotionMagic.MotionMagicExpo_kA = 0.1;
+    // Without this, the steer axis would treat 359 degrees and 1 degree as far apart (since
+    // they're far apart numerically) instead of realizing the shortest path between them is just
+    // 2 degrees -- ContinuousWrap makes position control treat the angle range as a circle, always
+    // taking the short way around.
     turnConfig.ClosedLoopGeneral.ContinuousWrap = true;
     turnConfig.MotorOutput.Inverted =
         constants.SteerMotorInverted
@@ -152,7 +178,8 @@ public class ModuleIOTalonFX implements ModuleIO {
     turnConfig.TorqueCurrent.PeakReverseTorqueCurrent = -40;
     tryUntilOk(5, () -> turnTalon.getConfigurator().apply(turnConfig, 0.25));
 
-    // Configure CANCoder
+    // Configure the CANcoder itself: apply the mounting offset and sensor direction (see
+    // TunerConstants' encoder-offset comment for what "offset" means here).
     CANcoderConfiguration cancoderConfig = constants.EncoderInitialConfigs;
     cancoderConfig.MagnetSensor.MagnetOffset = constants.EncoderOffset;
     cancoderConfig.MagnetSensor.SensorDirection =
@@ -161,10 +188,14 @@ public class ModuleIOTalonFX implements ModuleIO {
             : SensorDirectionValue.CounterClockwise_Positive;
     cancoder.getConfigurator().apply(cancoderConfig);
 
-    // Create timestamp queue
+    // Register this module's drive/turn position signals with the shared background odometry
+    // thread (see PhoenixOdometryThread) so they get sampled at ODOMETRY_FREQUENCY instead of only
+    // once per normal 50Hz robot loop.
     timestampQueue = PhoenixOdometryThread.getInstance().makeTimestampQueue();
 
-    // Create drive status signals
+    // Create drive status signals. A StatusSignal is Phoenix6's live handle to one specific value
+    // on the device (e.g. "this motor's position") -- you read the CAN bus by refreshing these
+    // signals (see updateInputs below), not by making a fresh request every time.
     drivePosition = driveTalon.getPosition();
     drivePositionQueue = PhoenixOdometryThread.getInstance().registerSignal(drivePosition.clone());
     driveVelocity = driveTalon.getVelocity();
@@ -179,7 +210,9 @@ public class ModuleIOTalonFX implements ModuleIO {
     turnAppliedVolts = turnTalon.getMotorVoltage();
     turnCurrent = turnTalon.getStatorCurrent();
 
-    // Configure periodic frames
+    // Position signals (used for odometry) get sampled fast, at the same high odometry frequency
+    // as everything else feeding the pose estimator; the rest (velocity, voltage, current -- used
+    // for logging/dashboard/diagnostics, not high-precision tracking) only need the normal 50Hz.
     BaseStatusSignal.setUpdateFrequencyForAll(
         Drive.ODOMETRY_FREQUENCY, drivePosition, turnPosition);
     BaseStatusSignal.setUpdateFrequencyForAll(
@@ -191,6 +224,9 @@ public class ModuleIOTalonFX implements ModuleIO {
         turnVelocity,
         turnAppliedVolts,
         turnCurrent);
+    // Tells each TalonFX to stop broadcasting any CAN status frame that wasn't explicitly
+    // requested above, freeing up CAN bus bandwidth that would otherwise be wasted on signals
+    // nothing reads.
     ParentDevice.optimizeBusUtilizationForAll(driveTalon, turnTalon);
   }
 
@@ -234,6 +270,14 @@ public class ModuleIOTalonFX implements ModuleIO {
     drivePositionQueue.clear();
     turnPositionQueue.clear();
   }
+
+  // Every control method below switches on constants.XyzMotorClosedLoopOutput to pick between two
+  // fundamentally different ways of commanding a Phoenix6 motor: Voltage (command a voltage
+  // directly -- simple, and what's characterized by SysId in TunerConstants) or TorqueCurrentFOC
+  // ("Field-Oriented Control" torque-current -- commands motor torque directly, which tracks
+  // velocity/position setpoints more precisely at the cost of needing separate characterization).
+  // This project's TunerConstants configures every module for Voltage mode, but the option is
+  // built into the template either way.
 
   @Override
   public void setDriveOpenLoop(double output) {

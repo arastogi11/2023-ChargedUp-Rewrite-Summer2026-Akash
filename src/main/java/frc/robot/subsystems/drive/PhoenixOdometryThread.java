@@ -28,6 +28,20 @@ import java.util.function.DoubleSupplier;
  * using a CANivore, the thread uses the "waitForAll" blocking method to enable more consistent
  * sampling. This also allows Phoenix Pro users to benefit from lower latency between devices
  * using CANivore time synchronization.
+ *
+ * <p>Why a whole separate thread, instead of just reading these signals inside {@code
+ * Drive.periodic()} like everything else? The normal robot loop runs at a fixed 50Hz (every 20ms),
+ * but {@code ODOMETRY_FREQUENCY} can be up to 250Hz on a CAN FD bus -- reading position data that
+ * frequently, with evenly-spaced samples, needs its own dedicated loop running on its own schedule,
+ * independent of (and faster than) the main robot loop. This class is a singleton (one instance
+ * shared by every {@link ModuleIOTalonFX} and {@link GyroIOPigeon2}) so all of them get sampled
+ * together on the exact same schedule.
+ *
+ * <p>The general flow: each IO class calls {@link #registerSignal} once at startup for every value
+ * it wants sampled, getting back a {@link Queue} that this thread will push new samples onto. Every
+ * loop, in {@code updateInputs()}, each IO class drains its queue (see e.g. {@code
+ * ModuleIOTalonFX.updateInputs}) into an array and clears it -- that queue is the hand-off point
+ * between this background thread (producer) and the normal robot loop (consumer).
  */
 public class PhoenixOdometryThread extends Thread {
   private final Lock signalsLock = new ReentrantLock(); // Prevents conflicts when registering signals

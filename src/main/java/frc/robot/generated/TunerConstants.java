@@ -66,6 +66,11 @@ public class TunerConstants {
   // hardware.
   private static final Current kSlipCurrent = Amps.of(60);
 
+  // "Initial configs" are applied to each module's motors once, at startup, before the
+  // gains/gear-ratio/etc. settings above are layered on top -- this is where you'd set anything
+  // Phoenix6 doesn't have a dedicated factory method for. Here it's just current limiting for the
+  // steer motor (below), so the small, low-torque steer axis can't accidentally brown out the
+  // robot the way an unlimited drive motor could.
   private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfiguration();
   private static final TalonFXConfiguration steerInitialConfigs =
       new TalonFXConfiguration()
@@ -110,6 +115,10 @@ public class TunerConstants {
           .withPigeon2Id(kPigeonId)
           .withPigeon2Configs(pigeonConfigs);
 
+  // A factory that bundles every setting shared by all four swerve modules (gearing, gains,
+  // current limits, etc. -- everything defined above this point) so each module below only needs
+  // to supply what's actually different about it: CAN IDs, its CANcoder's mounting offset, and its
+  // physical position on the chassis.
   private static final SwerveModuleConstantsFactory<
           TalonFXConfiguration, TalonFXConfiguration, CANcoderConfiguration>
       ConstantCreator =
@@ -135,6 +144,15 @@ public class TunerConstants {
               .withDriveInertia(kDriveInertia)
               .withSteerFrictionVoltage(kSteerFrictionVoltage)
               .withDriveFrictionVoltage(kDriveFrictionVoltage);
+
+  // Each module's CANcoder is bolted to the swerve module in whatever rotational position the
+  // mechanical assembly happened to land in -- there's no way to physically align it to exactly
+  // zero. So "encoder offset" is the CANcoder reading, in rotations, at the module's true
+  // mechanical zero (wheel pointed straight forward); the encoder config subtracts this offset so
+  // that a *reported* position of zero always means "pointed forward", regardless of how the
+  // sensor happened to be mounted. These four numbers are specific to this physical robot and
+  // would need to be re-measured (spin each wheel to point forward, read the raw CANcoder value)
+  // if a module is ever swapped or the CANcoder is ever removed and reinstalled.
 
   // Front Left -- Constants.Swerve.Mod0 (2023 robot)
   private static final int kFrontLeftDriveMotorId = 1;

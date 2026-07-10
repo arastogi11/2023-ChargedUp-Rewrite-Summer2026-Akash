@@ -29,16 +29,26 @@ public class GyroIOPigeon2 implements GyroIO {
   private final StatusSignal<AngularVelocity> yawVelocity = pigeon.getAngularVelocityZWorld();
 
   public GyroIOPigeon2() {
+    // TunerConstants.DrivetrainConstants.Pigeon2Configs is null in this project (see
+    // TunerConstants -- it's an optional custom-config hook nobody's used), so this always falls
+    // through to the plain default Pigeon2Configuration().
     if (TunerConstants.DrivetrainConstants.Pigeon2Configs != null) {
       pigeon.getConfigurator().apply(TunerConstants.DrivetrainConstants.Pigeon2Configs);
     } else {
       pigeon.getConfigurator().apply(new Pigeon2Configuration());
     }
 
+    // Zero the gyro's heading at startup -- "forward" for odometry purposes becomes whichever way
+    // the robot happened to be facing when it was powered on, unless the pose estimator is
+    // explicitly reset to a known field pose later (e.g. at the start of an autonomous routine).
     pigeon.getConfigurator().setYaw(0.0);
+    // Yaw feeds odometry directly, so it needs the same high sample rate as the module position
+    // signals; angular velocity is only used for logging/diagnostics, so 50Hz is plenty.
     yaw.setUpdateFrequency(Drive.ODOMETRY_FREQUENCY);
     yawVelocity.setUpdateFrequency(50.0);
     pigeon.optimizeBusUtilization();
+    // Same background high-frequency sampling mechanism used by every module -- see
+    // PhoenixOdometryThread.
     yawTimestampQueue = PhoenixOdometryThread.getInstance().makeTimestampQueue();
     yawPositionQueue = PhoenixOdometryThread.getInstance().registerSignal(yaw.clone());
   }

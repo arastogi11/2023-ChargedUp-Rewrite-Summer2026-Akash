@@ -18,6 +18,12 @@ import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import org.littletonrobotics.junction.Logger;
 
+/**
+ * One swerve module: a drive motor (spins the wheel to move) and a steer motor (rotates the whole
+ * module to change direction), plus the CANcoder that tells the steer motor which way it's
+ * currently pointed. {@link Drive} owns four of these (one per corner) and translates whole-robot
+ * motion into a per-module {@link SwerveModuleState} for each to chase.
+ */
 public class Module {
   private final ModuleIO io;
   private final ModuleIOInputsAutoLogged inputs = new ModuleIOInputsAutoLogged();
@@ -71,13 +77,24 @@ public class Module {
     turnEncoderDisconnectedAlert.set(!inputs.turnEncoderConnected);
   }
 
-  /** Runs the module with the specified setpoint state. Mutates the state to optimize it. */
+  /**
+   * Runs the module with the specified setpoint state. Mutates the state to optimize it.
+   *
+   * <p>{@code state.optimize(getAngle())} is a classic swerve trick: if a setpoint asks the module
+   * to turn almost 180 degrees, it's faster to instead turn the short way (a small angle) and
+   * drive the wheel backwards, reaching the same physical motion without the slow full rotation.
+   * {@code cosineScale} then reduces the commanded drive speed while the module is still turning
+   * toward its target angle (proportional to how far off-angle it currently is), since driving at
+   * full speed sideways relative to where the wheel is actually pointed just scrubs the tire.
+   */
   public void runSetpoint(SwerveModuleState state) {
     // Optimize velocity setpoint
     state.optimize(getAngle());
     state.cosineScale(inputs.turnPosition);
 
-    // Apply setpoints
+    // Apply setpoints. Drive velocity converts from linear wheel speed (m/s) to motor rotational
+    // speed (rad/s) by dividing by the wheel radius -- basic circular motion: linear speed =
+    // angular speed * radius, rearranged.
     io.setDriveVelocity(state.speedMetersPerSecond / constants.WheelRadius);
     io.setTurnPosition(state.angle);
   }

@@ -22,9 +22,17 @@ import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 /**
  * Physics sim implementation of module IO. The sim models are configured using a set of module
  * constants from Phoenix. Simulation is always based on voltage control.
+ *
+ * <p>Unlike {@link ModuleIOTalonFX}, which hands closed-loop control off to the real motor
+ * controller's onboard PID, there's no real controller to do that here -- so this class runs its
+ * own plain WPILib {@link PIDController} in software and applies the resulting voltage directly to
+ * a {@link DCMotorSim} physics model each loop. That's a meaningfully different control approach
+ * from the real robot purely because simulation has no hardware PID to delegate to, not a design
+ * choice that carries any real-robot implication.
  */
 public class ModuleIOSim implements ModuleIO {
-  // TunerConstants doesn't support separate sim constants, so they are declared locally
+  // These are separate hand-picked gains for the simulation's own software PID loop --
+  // TunerConstants' gains are for the real TalonFX's onboard controller and don't apply here.
   private static final double DRIVE_KP = 0.05;
   private static final double DRIVE_KD = 0.0;
   private static final double DRIVE_KS = 0.0;

@@ -50,8 +50,12 @@ import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
  * periodic methods (other than the scheduler calls). Instead, the structure of the robot
  * (including subsystems, commands, and button mappings) should be declared here.
  *
- * <p>Mechanisms, vision, and autonomous selection get wired in as later phases of the rewrite
- * land.
+ * <p>Every subsystem below is constructed with a different {@code XyzIO} implementation depending
+ * on {@link Constants#currentMode} -- the subsystem class itself (e.g. {@code Elevator}) never
+ * knows or cares whether it's talking to a real TalonFX, a physics simulation, or nothing at all
+ * (REPLAY). That indirection is the whole point of the IO-interface pattern used throughout {@code
+ * subsystems/}: it's what lets the exact same command-based robot code run unmodified in three
+ * very different situations.
  */
 public class RobotContainer {
   private final Drive drive;
@@ -63,16 +67,24 @@ public class RobotContainer {
   private final Vision vision;
 
   // Controllers (team now uses Xbox controllers, replacing the 2023 robot's raw Joysticks +
-  // button board)
+  // button board). Port numbers here (0, 1) must match the order the controllers are plugged in
+  // on the Driver Station's USB tab.
   private final CommandXboxController driverController = new CommandXboxController(0);
   private final CommandXboxController operatorController = new CommandXboxController(1);
 
+  // Populated in the constructor with every autonomous routine the driver can pick from on the
+  // dashboard, plus a handful of drivetrain characterization routines (see below).
   private final LoggedDashboardChooser<Command> autoChooser;
 
   public RobotContainer() {
+    // Build every subsystem with the IO implementation appropriate for how the code is currently
+    // running. This switch is the ONLY place in the whole codebase that branches on
+    // Constants.currentMode to pick hardware vs. sim vs. nothing -- everywhere else (commands,
+    // RobotContainer's own button bindings, subsystem periodic() methods) is written against the
+    // subsystem's public API and doesn't know or care which IO backs it.
     switch (Constants.currentMode) {
       case REAL -> {
-        // Real robot, instantiate hardware IO implementations
+        // Real robot: real hardware IO implementations, one per motor controller/sensor.
         drive =
             new Drive(
                 new GyroIOPigeon2(),
@@ -92,7 +104,9 @@ public class RobotContainer {
                 new VisionIOLimelight("limelight-back", drive::getRotation));
       }
       case SIM -> {
-        // Sim robot, instantiate physics sim IO implementations
+        // Simulation: same subsystem classes, but every IO is a physics model (ElevatorSim,
+        // SingleJointedArmSim, etc.) instead of real motor controller calls, so the exact same
+        // command-based code can be exercised and tuned before ever touching real hardware.
         drive =
             new Drive(
                 new GyroIO() {},
@@ -109,7 +123,10 @@ public class RobotContainer {
         vision = new Vision(drive::addVisionMeasurement, new VisionIO() {}, new VisionIO() {});
       }
       default -> {
-        // Replayed robot, disable IO implementations
+        // REPLAY: `new XyzIO() {}` constructs an anonymous instance of the interface using only
+        // its no-op default methods -- no hardware calls, no sim math, nothing. That's correct
+        // here because in replay every recorded @AutoLog input is fed back in from the saved log
+        // file instead of being produced live, so nothing should be generating new values.
         drive =
             new Drive(
                 new GyroIO() {}, new ModuleIO() {}, new ModuleIO() {}, new ModuleIO() {}, new ModuleIO() {});
@@ -129,6 +146,14 @@ public class RobotContainer {
     // until paths/autos are drawn in the PathPlanner app against the team's actual field
     // strategy, which isn't something to fabricate here.
     autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
+
+    // SysId ("System Identification") drives the robot through a scripted quasistatic (slow,
+    // near-constant velocity) then dynamic (step voltage) test and logs the response, which
+    // WPILib's SysId analysis tool can turn into real kS/kV/kA feedforward gains -- run these from
+    // the dashboard once on a real robot to replace the placeholder gains flagged in
+    // generated/TunerConstants.java. Wheel radius characterization spins the robot in a circle to
+    // solve for the actual effective wheel radius vs. the value currently guessed in
+    // TunerConstants.
     autoChooser.addOption(
         "Drive SysId (Quasistatic Forward)", drive.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
     autoChooser.addOption(
@@ -142,7 +167,12 @@ public class RobotContainer {
     configureBindings();
   }
 
-  /** Registers named commands PathPlanner-authored autos can trigger via event markers. */
+  /**
+   * Registers named commands PathPlanner-authored autos can trigger via event markers -- i.e. once
+   * a path is drawn in the PathPlanner GUI, you can drop an event marker on it named e.g.
+   * "GroundPickup" and it'll run the exact command registered here under that name, with no extra
+   * code needed per-auto.
+   */
   private void registerNamedCommands() {
     NamedCommands.registerCommand("Stow", ScoringCommands.stow(elevator, arm, wrist));
     NamedCommands.registerCommand("PrepScoreMid", ScoringCommands.prepScoreMid(elevator, arm, wrist));
@@ -153,13 +183,28 @@ public class RobotContainer {
     NamedCommands.registerCommand("Release", ScoringCommands.release(intake));
   }
 
-  /** Button -> command mappings go here. */
+  /**
+   * Button -> command mappings go here.
+   *
+   * <p>Driver controller: left stick translates, right stick X rotates (both field-relative), Start
+   * button X-locks the wheels to resist being pushed. Right trigger is a continuous precision/slow
+   * mode -- see the comment below.
+   *
+   * <p>Operator controller: A/X/Y move to stow/mid-score/high-score position. B and the two
+   * bumpers run the three pickup sequences (ground/chute/shelf), each of which drives the intake
+   * until a game piece is detected. Right trigger releases the held piece; left trigger is a manual
+   * intake override for de-jamming. D-pad up/down and Back set the LED cone/cube/off indicator.
+   */
   private void configureBindings() {
     // Right trigger scales speed down continuously for fine positioning (e.g. lining up to
     // score) -- the Xbox-native equivalent of the 2023 robot's Ruffy joysticks, each of which had
     // a twist axis providing fine translation/strafe control at a fixed 20% speed whenever the
     // main stick was centered. Released = full speed, fully pressed = slowest (see
     // DriveCommands.PRECISION_MIN_SCALAR).
+    //
+    // setDefaultCommand means this command runs continuously any time nothing else that requires
+    // the `drive` subsystem is scheduled -- exactly the behavior you want for "drive around with
+    // the sticks" as a background activity that specific button-triggered commands can interrupt.
     drive.setDefaultCommand(
         DriveCommands.joystickDrive(
             drive,
@@ -168,6 +213,8 @@ public class RobotContainer {
             () -> -driverController.getRightX(),
             () -> 1.0 - driverController.getRightTriggerAxis()));
 
+    // onTrue fires the command once, the instant the button transitions from unpressed to pressed
+    // (as opposed to whileTrue below, which restarts/continues running for as long as it's held).
     driverController.start().onTrue(Commands.runOnce(drive::stopWithX, drive));
 
     // Scoring positions
@@ -182,7 +229,9 @@ public class RobotContainer {
 
     // Release the held game piece at whatever scoring position is currently active
     operatorController.rightTrigger().onTrue(ScoringCommands.release(intake));
-    // Manual intake override, for de-jamming or off-nominal pickups
+    // Manual intake override, for de-jamming or off-nominal pickups. whileTrue means this only
+    // runs while the trigger is physically held down, and Commands.startEnd wires runIn as the
+    // "start" action and stop as the "end" action run when the trigger is released.
     operatorController.leftTrigger().whileTrue(Commands.startEnd(intake::runIn, intake::stop, intake));
 
     // Held game-piece type indicator -- 2023's intake current thresholds never actually

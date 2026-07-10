@@ -9,12 +9,20 @@ import edu.wpi.first.wpilibj.RobotBase;
 
 /**
  * Robot-wide numerical/boolean constants live here, grouped into a nested class per subsystem.
- * Do not put anything functional in this class.
+ * Do not put anything functional in this class -- no motor objects, no logic, just numbers and
+ * flags that other classes read.
  */
 public final class Constants {
   private Constants() {}
 
+  // What mode to run in when we're NOT on a real robot (RobotBase.isReal() is false). Almost
+  // always SIM; switch this to Mode.REPLAY only temporarily, while replaying a saved log.
   public static final Mode simMode = Mode.SIM;
+
+  // The actual mode used everywhere else in the codebase. RobotBase.isReal() is true only when
+  // the code is actually running on a roboRIO -- so this line means "REAL on the robot, otherwise
+  // whatever simMode says." Every subsystem's constructor in RobotContainer switches on this to
+  // decide whether to build real-hardware IO or simulated IO.
   public static final Mode currentMode = RobotBase.isReal() ? Mode.REAL : simMode;
 
   public enum Mode {
@@ -39,18 +47,35 @@ public final class Constants {
   public static final class ElevatorConstants {
     private ElevatorConstants() {}
 
+    // CAN ID of the elevator's single TalonFX (Kraken/Falcon) motor controller.
     public static final int motorId = 9;
+    // roboRIO DIO port numbers for the two hard-stop limit switches.
     public static final int bottomLimitPort = 0;
     public static final int topLimitPort = 1;
 
+    // Stator current limit in amps -- the motor controller will clamp output to avoid drawing
+    // more than this from the battery through the motor windings, protecting the motor/breaker.
     public static final double statorCurrentLimitAmps = 60;
+    // Motion Magic is Phoenix6's built-in trapezoidal motion profiler: instead of jumping straight
+    // to a target and letting the PID loop fight the resulting huge error, it ramps velocity up to
+    // this cruise speed, holds it, then ramps down as it approaches the goal. Units here are
+    // rotations/sec (cruise) and rotations/sec^2 (acceleration) of the mechanism (post-gearbox).
     public static final double motionMagicCruiseVelocityRotPerSec = 20;
     public static final double motionMagicAccelerationRotPerSecSq = 40;
 
+    // Slot0Configs holds the closed-loop gains Phoenix6 uses onboard the motor controller itself
+    // (not in robot code) to drive toward a Motion Magic setpoint: kP/kI/kD are standard PID terms
+    // (proportional/integral/derivative -- kP alone is often enough for a well-tuned mechanism),
+    // and kS/kV/kA are feedforward terms (kS = voltage to overcome static friction before the
+    // mechanism starts moving at all, kV = voltage per unit velocity, kA = voltage per unit
+    // acceleration) that let the controller anticipate the needed output instead of only reacting
+    // to error after the fact. All zero here except kP -- untuned, a real starting point for
+    // hardware tuning, not finished values.
     public static final Slot0Configs gains =
         new Slot0Configs().withKP(4.0).withKI(0).withKD(0).withKS(0.0).withKV(0.0).withKA(0.0);
 
-    // Placeholder rotation setpoints -- see class javadoc.
+    // Placeholder rotation setpoints -- see class javadoc. These four values are what
+    // Elevator.Position.BOTTOM/MID/HIGH/SHELF resolve to.
     public static final double bottomPositionRotations = 0.0;
     public static final double midPositionRotations = 5.0;
     public static final double highPositionRotations = 8.39;
@@ -70,21 +95,34 @@ public final class Constants {
     private ArmConstants() {}
 
     public static final int motorId = 10;
+    // CAN ID of the CANcoder magnetic absolute encoder mounted on the arm's output shaft, used as
+    // the TalonFX's *remote* feedback sensor instead of its own internal rotor sensor -- see
+    // ArmIOTalonFX's javadoc for why that matters (it reads real arm angle directly, immune to
+    // belt/chain slip that would throw off a rotor-based position estimate).
     public static final int cancoderId = 13;
     public static final boolean motorInverted = true;
 
-    // TODO: set from CAD/gearbox spec -- not captured in the 2023 source.
+    // How many rotor rotations correspond to one rotation of the CANcoder (i.e. the gearbox ratio
+    // between the motor and the arm's output shaft). TODO: set from CAD/gearbox spec -- not
+    // captured in the 2023 source, so this is a guess, not a measured value.
     public static final double rotorToSensorRatio = 100.0;
 
     public static final double statorCurrentLimitAmps = 50;
+    // See ElevatorConstants above for what Motion Magic cruise/acceleration and Slot0Configs mean.
     public static final double motionMagicCruiseVelocityRotPerSec = 2.0;
     public static final double motionMagicAccelerationRotPerSecSq = 4.0;
 
+    // CANcoder "magnet offset": the raw magnet reading doesn't start at zero at the arm's
+    // mechanical zero point, so this offset (2023's ArmConstants.armOffset, in degrees here
+    // converted to rotations) gets subtracted in the encoder config to make position readings
+    // physically meaningful (0 = the arm's defined zero position).
     public static final double magnetOffsetRotations = 205.0 / 360.0;
 
     public static final Slot0Configs gains =
         new Slot0Configs().withKP(60.0).withKI(0).withKD(0).withKS(0.0).withKV(0.0).withKA(0.0);
 
+    // Named setpoints, all originally specified in degrees (0-360) by the 2023 code and converted
+    // here to rotations (Phoenix6's native unit) by dividing by 360.
     public static final double startingPositionRotations = 10.0 / 360.0;
     public static final double groundPickupPositionRotations = 82.5 / 360.0;
     public static final double chutePositionRotations = 35.0 / 360.0;
@@ -113,11 +151,13 @@ public final class Constants {
     public static final double motionMagicCruiseVelocityRotPerSec = 2.0;
     public static final double motionMagicAccelerationRotPerSecSq = 4.0;
 
+    // See ArmConstants.magnetOffsetRotations above for what this is.
     public static final double magnetOffsetRotations = 160.66 / 360.0;
 
     public static final Slot0Configs gains =
         new Slot0Configs().withKP(45.0).withKI(0).withKD(0).withKS(0.0).withKV(0.0).withKA(0.0);
 
+    // Named setpoints, converted from the 2023 code's degree values to rotations (/360).
     public static final double startingPositionRotations = 320.0 / 360.0;
     public static final double groundPickupPositionRotations = 275.0 / 360.0;
     public static final double babyBirdPositionRotations = 255.0 / 360.0;
@@ -136,14 +176,18 @@ public final class Constants {
   public static final class LedsConstants {
     private LedsConstants() {}
 
+    // roboRIO PWM port the Blinkin LED controller is wired to.
     public static final int pwmPort = 0;
 
-    public static final double blackPwm = 0.99;
-    public static final double yellowPwm = 0.69;
-    public static final double purplePwm = 0.91;
-    public static final double greenPwm = -0.05;
-    public static final double blinkPurplePwm = 0.15;
-    public static final double blinkYellowPwm = -0.07;
+    // REV Blinkin controllers pick a color/pattern based purely on what PWM signal (-1.0 to 1.0)
+    // you send them -- there's no separate "set color" API, just these magic numbers from REV's
+    // published pattern table. All six values below are carried over unchanged from 2023.
+    public static final double blackPwm = 0.99; // "Solid Colors: Black" -- i.e. off
+    public static final double yellowPwm = 0.69; // solid yellow (cone indicator)
+    public static final double purplePwm = 0.91; // solid violet/purple (cube indicator)
+    public static final double greenPwm = -0.05; // a pattern in Blinkin's negative/dynamic range
+    public static final double blinkPurplePwm = 0.15; // a pattern in Blinkin's positive range
+    public static final double blinkYellowPwm = -0.07; // a pattern in Blinkin's negative range
   }
 
   /** Carried over from the 2023 robot's {@code Constants.intakeMotorID} and {@code Intake.java}. */
@@ -153,9 +197,13 @@ public final class Constants {
     public static final int motorId = 11;
     public static final double statorCurrentLimitAmps = 60;
 
-    // 2023's cube/cone current-sensing threshold (Intake.cubeThreshold / coneThreshold).
+    // How much stator current (amps) the roller draws once it's gripped a game piece and stalled
+    // against it -- used as a crude "do we have something?" sensor instead of a dedicated beam
+    // break, carried over from 2023's Intake.cubeThreshold/coneThreshold (which were identical
+    // values, so the 2023 code never actually distinguished cone vs. cube by current either).
     public static final double gamePieceCurrentThresholdAmps = 20;
 
+    // Open-loop percent-output speeds (-1.0 to 1.0) for each named intake action.
     public static final double intakePercent = 0.9;
     public static final double intakeSlowPercent = 0.06;
     public static final double outtakePercent = 0.4;

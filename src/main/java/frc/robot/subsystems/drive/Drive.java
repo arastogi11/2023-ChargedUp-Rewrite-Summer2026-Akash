@@ -50,9 +50,42 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
 
+/**
+ * The swerve drivetrain subsystem: owns the four {@link Module}s (drive + steer motor pairs) and
+ * the gyro, combines them into a single robot-wide velocity/pose interface, and keeps a running
+ * estimate of the robot's position on the field.
+ *
+ * <p>Two different position estimates get fused together here, which is worth understanding since
+ * it's the core idea behind almost every FRC drivetrain:
+ *
+ * <ul>
+ *   <li><b>Odometry</b>: every loop, each module reports how far its wheel has spun since last
+ *       time and which way it's pointed. Combined with the gyro's heading, that's enough geometry
+ *       (see {@link SwerveDriveKinematics}) to calculate exactly how far the whole robot must have
+ *       moved. This is precise moment-to-moment, but small errors (wheel slip, tiny gyro drift)
+ *       accumulate over a match, so the estimate slowly drifts from reality.
+ *   <li><b>Vision</b>: {@link frc.robot.subsystems.vision.Vision} periodically supplies an
+ *       absolute pose reading from AprilTags, which doesn't drift but only updates a few times a
+ *       second and is noisier per-sample.
+ * </ul>
+ *
+ * <p>{@link SwerveDrivePoseEstimator} (see {@code poseEstimator} below) is a Kalman-filter-like
+ * WPILib class that blends both sources automatically, weighted by how much each measurement's
+ * reported "standard deviation" (uncertainty) trusts it -- odometry runs every loop and is
+ * generally trusted a lot, vision corrects the accumulated drift periodically and is trusted only
+ * as much as {@link frc.robot.subsystems.vision.VisionConstants#xyStdDev} says to.
+ */
 public class Drive extends SubsystemBase {
-  // TunerConstants doesn't include these constants, so they are declared locally
+  // TunerConstants doesn't include these constants, so they are declared locally.
+  // Odometry runs much faster than the normal 50Hz robot loop when the modules are on a CAN FD
+  // ("CAN with Flexible Data-rate", the newer, higher-bandwidth CAN bus standard) bus like a
+  // CANivore -- 250 samples/sec instead of 100 -- because more, more-frequent position samples
+  // make the pose estimate smoother and reduce the odometry drift described above.
   static final double ODOMETRY_FREQUENCY = TunerConstants.kCANBus.isNetworkFD() ? 250.0 : 100.0;
+
+  // The distance from the robot's center to its farthest-out swerve module -- needed to convert
+  // between the robot's overall rotational speed and each individual wheel's linear speed
+  // (a point farther from the center has to move faster to achieve the same rotation rate).
   public static final double DRIVE_BASE_RADIUS =
       Math.max(
           Math.max(
@@ -80,23 +113,41 @@ public class Drive extends SubsystemBase {
               1),
           getModuleTranslations());
 
+  // A lock (mutex) shared with PhoenixOdometryThread: that background thread reads high-frequency
+  // sensor samples on its own schedule, independent of the normal 50Hz robot loop, so this lock
+  // prevents this class's periodic() from reading module data mid-update and seeing a
+  // half-written, inconsistent set of samples.
   static final Lock odometryLock = new ReentrantLock();
   private final GyroIO gyroIO;
   private final GyroIOInputsAutoLogged gyroInputs = new GyroIOInputsAutoLogged();
   private final Module[] modules = new Module[4]; // FL, FR, BL, BR
   private final SysIdRoutine sysId;
+
+  // An Alert shows up automatically on the Driver Station and any connected dashboard whenever
+  // .set(true) is called -- no manual dashboard wiring needed. Used throughout this codebase for
+  // "hey, something's wrong" conditions a driver should notice mid-match.
   private final Alert gyroDisconnectedAlert =
       new Alert("Disconnected gyro, using kinematics as fallback.", AlertType.kError);
 
+  // Kinematics converts between "how is the whole robot moving" (a single ChassisSpeeds: forward,
+  // sideways, and rotational velocity) and "how is each individual swerve module moving" (four
+  // separate SwerveModuleStates: each module's own speed and steering angle) -- the core geometry
+  // problem every swerve drivetrain has to solve, in both directions.
   private SwerveDriveKinematics kinematics = new SwerveDriveKinematics(getModuleTranslations());
   private Rotation2d rawGyroRotation = Rotation2d.kZero;
-  private SwerveModulePosition[] lastModulePositions = // For delta tracking
+  // The module positions read on the previous odometry update, kept around so periodic() can
+  // compute how far each wheel moved *this* update (the delta) rather than its absolute position.
+  private SwerveModulePosition[] lastModulePositions =
       new SwerveModulePosition[] {
         new SwerveModulePosition(),
         new SwerveModulePosition(),
         new SwerveModulePosition(),
         new SwerveModulePosition()
       };
+  // The two VecBuilder.fill(...) arguments are the estimator's starting trust levels: how much to
+  // trust odometry-only tracking (x meters, y meters, theta radians of expected error) vs. how
+  // much to trust a vision measurement by default before Vision.java supplies its own
+  // per-measurement values (see Drive class javadoc above for the odometry/vision fusion idea).
   private SwerveDrivePoseEstimator poseEstimator =
       new SwerveDrivePoseEstimator(
           kinematics,
@@ -118,13 +169,23 @@ public class Drive extends SubsystemBase {
     modules[2] = new Module(blModuleIO, 2, TunerConstants.BackLeft);
     modules[3] = new Module(brModuleIO, 3, TunerConstants.BackRight);
 
-    // Usage reporting for swerve template
+    // Tells the WPILib usage-reporting system this robot uses an AdvantageKit-style swerve
+    // drivetrain -- purely telemetry FIRST collects, has no effect on robot behavior.
     HAL.report(tResourceType.kResourceType_RobotDrive, tInstances.kRobotDriveSwerve_AdvantageKit);
 
-    // Start odometry thread
+    // The odometry thread (see PhoenixOdometryThread) runs on its own background thread at
+    // ODOMETRY_FREQUENCY, independent of the normal 50Hz loop, so position samples are as
+    // frequent and evenly-spaced as the CAN bus allows rather than being limited to once per robot
+    // loop.
     PhoenixOdometryThread.getInstance().start();
 
-    // Configure AutoBuilder for PathPlanner
+    // AutoBuilder is PathPlannerLib's entry point: give it function references for reading the
+    // current pose, resetting it, reading current chassis speeds, and commanding a new chassis
+    // speed, plus a PPHolonomicDriveController (the PID controller PathPlanner uses internally to
+    // follow a path -- separate PID gains for translation vs. rotation), and it can then
+    // autonomously drive any path/auto authored in the PathPlanner GUI without this class needing
+    // to know anything about path-following itself. The alliance-color supplier flips
+    // blue-origin-authored paths to red automatically.
     AutoBuilder.configure(
         this::getPose,
         this::setPose,
@@ -135,7 +196,13 @@ public class Drive extends SubsystemBase {
         PP_CONFIG,
         () -> DriverStation.getAlliance().orElse(Alliance.Blue) == Alliance.Red,
         this);
+    // LocalADStarAK lets PathPlanner dynamically route around obstacles at runtime (rather than
+    // only following pre-authored paths exactly), with its internal state made replay-safe by
+    // routing it through AdvantageKit's logger -- see the class itself for details.
     Pathfinding.setPathfinder(new LocalADStarAK());
+    // These two callbacks just forward PathPlanner's internal state (the path it's currently
+    // following, and where it wants the robot right now) into AdvantageKit's logger, so you can
+    // see the planned trajectory overlaid on the actual robot path in AdvantageScope.
     PathPlannerLogging.setLogActivePathCallback(
         (activePath) -> {
           Logger.recordOutput("Odometry/Trajectory", activePath.toArray(new Pose2d[0]));
@@ -145,7 +212,9 @@ public class Drive extends SubsystemBase {
           Logger.recordOutput("Odometry/TrajectorySetpoint", targetPose);
         });
 
-    // Configure SysId
+    // SysIdRoutine drives the robot through WPILib's standard system-identification test
+    // sequence and logs voltage/velocity/position -- see RobotContainer's auto chooser comment
+    // for what this data is used for (deriving real kS/kV/kA feedforward gains).
     sysId =
         new SysIdRoutine(
             new SysIdRoutine.Config(
@@ -159,7 +228,10 @@ public class Drive extends SubsystemBase {
 
   @Override
   public void periodic() {
-    odometryLock.lock(); // Prevents odometry updates while reading data
+    // Hold the odometry lock while reading gyro/module inputs, since the background odometry
+    // thread (PhoenixOdometryThread) writes to these same queues concurrently -- without the
+    // lock we could read a queue mid-write and see inconsistent data.
+    odometryLock.lock();
     gyroIO.updateInputs(gyroInputs);
     Logger.processInputs("Drive/Gyro", gyroInputs);
     for (var module : modules) {
@@ -180,7 +252,10 @@ public class Drive extends SubsystemBase {
       Logger.recordOutput("SwerveStates/SetpointsOptimized", new SwerveModuleState[] {});
     }
 
-    // Update odometry
+    // Update odometry. Because the background thread samples faster than this periodic() method
+    // runs (see ODOMETRY_FREQUENCY), there can be multiple new samples queued up since last loop
+    // -- this loop processes every one of them in order, rather than just the latest, so no
+    // position data is thrown away even at high sample rates.
     double[] sampleTimestamps =
         modules[0].getOdometryTimestamps(); // All signals are sampled together
     int sampleCount = sampleTimestamps.length;
@@ -203,30 +278,53 @@ public class Drive extends SubsystemBase {
         // Use the real gyro angle
         rawGyroRotation = gyroInputs.odometryYawPositions[i];
       } else {
-        // Use the angle delta from the kinematics and module deltas
+        // Gyro disconnected (see the Alert below) -- fall back to estimating rotation purely from
+        // how much each wheel moved relative to the others. Kinematics.toTwist2d converts a set
+        // of module deltas into a single robot-wide "twist" (small linear + rotational motion);
+        // its rotational component is the best rotation estimate available without a gyro, though
+        // it's less accurate (wheel slip corrupts it directly, where the gyro is immune to that).
         Twist2d twist = kinematics.toTwist2d(moduleDeltas);
         rawGyroRotation = rawGyroRotation.plus(new Rotation2d(twist.dtheta));
       }
 
-      // Apply update
+      // Feed this sample into the pose estimator. updateWithTime (rather than a plain update)
+      // matters because we're processing possibly-several-loops'-worth of queued samples at once
+      // here -- passing each one's real timestamp keeps the estimator's internal time-ordering
+      // correct even though they're all being applied within a single call to periodic().
       poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, modulePositions);
     }
 
-    // Update gyro alert
+    // Update gyro alert. Suppressed in SIM, since GyroIO's simulation stub never reports
+    // "connected" (there's no real gyro to connect to) but that's expected, not a fault.
     gyroDisconnectedAlert.set(!gyroInputs.connected && Constants.currentMode != Mode.SIM);
 
+    // Publish the latest pose to the shared RobotState singleton so other subsystems (or code
+    // that doesn't otherwise have a reference to Drive) can read the robot's current position.
     RobotState.getInstance().robotPose = getPose();
   }
 
   /**
-   * Runs the drive at the desired velocity.
+   * Runs the drive at the desired velocity. This is the one method basically everything else in
+   * the codebase eventually calls to actually move the robot -- {@link
+   * frc.robot.commands.DriveCommands#joystickDrive}, PathPlanner autos (via {@code
+   * AutoBuilder.configure} above), and {@link #stop()} all funnel through here.
    *
-   * @param speeds Speeds in meters/sec
+   * @param speeds Speeds in meters/sec (and radians/sec for rotation)
    */
   public void runVelocity(ChassisSpeeds speeds) {
-    // Calculate module setpoints
+    // ChassisSpeeds.discretize compensates for a subtle swerve-specific error: commanding
+    // simultaneous linear + rotational velocity for a full 20ms loop actually traces a curved
+    // path, not a straight line, so a naive implementation "skews" sideways slightly during
+    // combined translate+rotate. Discretizing corrects the commanded speeds so the resulting
+    // *discrete* 20ms step ends up at the intended pose instead.
     ChassisSpeeds discreteSpeeds = ChassisSpeeds.discretize(speeds, 0.02);
+    // Convert the single robot-wide velocity into each module's individual speed + angle.
     SwerveModuleState[] setpointStates = kinematics.toSwerveModuleStates(discreteSpeeds);
+    // If satisfying the requested motion would require any one module to spin faster than the
+    // robot's actual top speed, scale ALL four modules' speeds down proportionally rather than
+    // clamping that one module alone -- otherwise the robot would drive in the wrong direction
+    // (imagine commanding straight-line motion where one corner module needs to go faster to
+    // also satisfy a rotation component; clamping only that module bends the actual path).
     SwerveDriveKinematics.desaturateWheelSpeeds(setpointStates, TunerConstants.kSpeedAt12Volts);
 
     // Log unoptimized setpoints and setpoint speeds
@@ -338,7 +436,13 @@ public class Drive extends SubsystemBase {
     poseEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
   }
 
-  /** Adds a new timestamped vision measurement. */
+  /**
+   * Adds a new timestamped vision measurement -- called by {@link
+   * frc.robot.subsystems.vision.Vision} once per accepted camera observation. {@code
+   * visionMeasurementStdDevs} is how the vision subsystem tells the pose estimator how much to
+   * trust this particular reading (smaller = more trusted; see {@link
+   * frc.robot.subsystems.vision.VisionConstants#xyStdDev} for how that number is computed).
+   */
   public void addVisionMeasurement(
       Pose2d visionRobotPoseMeters,
       double timestampSeconds,
