@@ -25,3 +25,7 @@ SOFTWARE.
 Portions of this project (the swerve drivetrain and vision subsystems) are
 adapted from Littleton Robotics' open-source AdvantageKit template project,
 used under the BSD license reproduced in AdvantageKit-License.md.
+
+src/main/java/frc/robot/subsystems/vision/LimelightHelpers.java is vendored
+unmodified (aside from its package declaration) from LimelightVision's
+limelightlib-wpijava, MIT licensed: https://github.com/LimelightVision/limelightlib-wpijava

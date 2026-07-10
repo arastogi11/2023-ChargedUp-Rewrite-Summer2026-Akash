@@ -142,6 +142,8 @@ checkstyle {
 }
 
 tasks.withType(Checkstyle) {
+    // Vendored, unmodified third-party file -- don't lint code we don't own.
+    exclude '**/LimelightHelpers.java'
     reports {
         html.required = true
         xml.required = false

@@ -31,6 +31,9 @@ import frc.robot.subsystems.leds.Leds;
 import frc.robot.subsystems.leds.LedsIO;
 import frc.robot.subsystems.leds.LedsIOSim;
 import frc.robot.subsystems.leds.LedsIOSpark;
+import frc.robot.subsystems.vision.Vision;
+import frc.robot.subsystems.vision.VisionIO;
+import frc.robot.subsystems.vision.VisionIOLimelight;
 import frc.robot.subsystems.wrist.Wrist;
 import frc.robot.subsystems.wrist.WristIO;
 import frc.robot.subsystems.wrist.WristIOSim;
@@ -52,6 +55,7 @@ public class RobotContainer {
   private final Wrist wrist;
   private final Intake intake;
   private final Leds leds;
+  private final Vision vision;
 
   // Controllers (team now uses Xbox controllers, replacing the 2023 robot's raw Joysticks +
   // button board)
@@ -74,6 +78,11 @@ public class RobotContainer {
         wrist = new Wrist(new WristIOTalonFX());
         intake = new Intake(new IntakeIOTalonFX());
         leds = new Leds(new LedsIOSpark());
+        vision =
+            new Vision(
+                drive::addVisionMeasurement,
+                new VisionIOLimelight("limelight-front", drive::getRotation),
+                new VisionIOLimelight("limelight-back", drive::getRotation));
       }
       case SIM -> {
         // Sim robot, instantiate physics sim IO implementations
@@ -89,6 +98,8 @@ public class RobotContainer {
         wrist = new Wrist(new WristIOSim());
         intake = new Intake(new IntakeIOSim());
         leds = new Leds(new LedsIOSim());
+        // No camera simulation yet -- stub IOs keep the AdvantageKit logging structure intact.
+        vision = new Vision(drive::addVisionMeasurement, new VisionIO() {}, new VisionIO() {});
       }
       default -> {
         // Replayed robot, disable IO implementations
@@ -100,6 +111,7 @@ public class RobotContainer {
         wrist = new Wrist(new WristIO() {});
         intake = new Intake(new IntakeIO() {});
         leds = new Leds(new LedsIO() {});
+        vision = new Vision(drive::addVisionMeasurement, new VisionIO() {}, new VisionIO() {});
       }
     }
 
