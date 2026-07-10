@@ -6,6 +6,7 @@ package frc.robot.subsystems.intake;
 
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.IntakeConstants;
+import frc.robot.util.LoggingControl;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -23,8 +24,12 @@ public class Intake extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // updateInputs always runs -- gamePieceSecured() below depends on fresh current readings
+    // every loop -- but recording is skippable; see LoggingControl's javadoc.
     io.updateInputs(inputs);
-    Logger.processInputs("Intake", inputs);
+    if (LoggingControl.enabled()) {
+      Logger.processInputs("Intake", inputs);
+    }
   }
 
   public void runIn() {

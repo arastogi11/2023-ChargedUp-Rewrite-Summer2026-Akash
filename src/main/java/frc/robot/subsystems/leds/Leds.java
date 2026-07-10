@@ -6,6 +6,7 @@ package frc.robot.subsystems.leds;
 
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.LedsConstants;
+import frc.robot.util.LoggingControl;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.LoggedNetworkBoolean;
 
@@ -42,9 +43,13 @@ public class Leds extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // updateInputs and the enabled-toggle check below always run; only the AdvantageKit recording
+    // is skippable -- see LoggingControl's javadoc.
     io.updateInputs(inputs);
-    Logger.processInputs("Leds", inputs);
-    Logger.recordOutput("Leds/Enabled", enabled.get());
+    if (LoggingControl.enabled()) {
+      Logger.processInputs("Leds", inputs);
+      Logger.recordOutput("Leds/Enabled", enabled.get());
+    }
     if (!enabled.get()) {
       io.setPwm(LedsConstants.blackPwm);
     }

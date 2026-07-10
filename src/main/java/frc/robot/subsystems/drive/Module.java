@@ -16,6 +16,7 @@ import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
+import frc.robot.util.LoggingControl;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -59,8 +60,14 @@ public class Module {
   }
 
   public void periodic() {
+    // updateInputs always runs -- odometry and the connection Alerts below both depend on fresh
+    // data every loop -- but the actual log recording is skippable; see LoggingControl's javadoc
+    // (this project's roboRIO 1 has much less RAM than a roboRIO 2, and this call, run for all
+    // four modules every loop, is one of the more expensive log writes in the codebase).
     io.updateInputs(inputs);
-    Logger.processInputs("Drive/Module" + Integer.toString(index), inputs);
+    if (LoggingControl.enabled()) {
+      Logger.processInputs("Drive/Module" + Integer.toString(index), inputs);
+    }
 
     // Calculate positions for odometry
     int sampleCount = inputs.odometryTimestamps.length; // All signals are sampled together

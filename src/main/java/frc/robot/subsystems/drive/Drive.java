@@ -45,6 +45,7 @@ import frc.robot.Constants.Mode;
 import frc.robot.RobotState;
 import frc.robot.generated.TunerConstants;
 import frc.robot.util.LocalADStarAK;
+import frc.robot.util.LoggingControl;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.littletonrobotics.junction.AutoLogOutput;
@@ -232,8 +233,13 @@ public class Drive extends SubsystemBase {
     // thread (PhoenixOdometryThread) writes to these same queues concurrently -- without the
     // lock we could read a queue mid-write and see inconsistent data.
     odometryLock.lock();
+    // updateInputs always runs -- the gyro-connected fallback logic below and pose estimation
+    // depend on it -- but processInputs (the expensive part: serializing to every log receiver)
+    // is skipped when LoggingControl says to cut back, see its javadoc for why.
     gyroIO.updateInputs(gyroInputs);
-    Logger.processInputs("Drive/Gyro", gyroInputs);
+    if (LoggingControl.enabled()) {
+      Logger.processInputs("Drive/Gyro", gyroInputs);
+    }
     for (var module : modules) {
       module.periodic();
     }
@@ -247,7 +253,7 @@ public class Drive extends SubsystemBase {
     }
 
     // Log empty setpoint states when disabled
-    if (DriverStation.isDisabled()) {
+    if (DriverStation.isDisabled() && LoggingControl.enabled()) {
       Logger.recordOutput("SwerveStates/Setpoints", new SwerveModuleState[] {});
       Logger.recordOutput("SwerveStates/SetpointsOptimized", new SwerveModuleState[] {});
     }
@@ -327,9 +333,13 @@ public class Drive extends SubsystemBase {
     // also satisfy a rotation component; clamping only that module bends the actual path).
     SwerveDriveKinematics.desaturateWheelSpeeds(setpointStates, TunerConstants.kSpeedAt12Volts);
 
-    // Log unoptimized setpoints and setpoint speeds
-    Logger.recordOutput("SwerveStates/Setpoints", setpointStates);
-    Logger.recordOutput("SwerveChassisSpeeds/Setpoints", discreteSpeeds);
+    // This runs every loop the drive is being commanded (i.e. almost every loop of a match), so
+    // it's one of the higher-value places to respect the logging kill switch -- see
+    // LoggingControl's javadoc.
+    if (LoggingControl.enabled()) {
+      Logger.recordOutput("SwerveStates/Setpoints", setpointStates);
+      Logger.recordOutput("SwerveChassisSpeeds/Setpoints", discreteSpeeds);
+    }
 
     // Send setpoints to modules
     for (int i = 0; i < 4; i++) {
@@ -337,7 +347,9 @@ public class Drive extends SubsystemBase {
     }
 
     // Log optimized setpoints (runSetpoint mutates each state)
-    Logger.recordOutput("SwerveStates/SetpointsOptimized", setpointStates);
+    if (LoggingControl.enabled()) {
+      Logger.recordOutput("SwerveStates/SetpointsOptimized", setpointStates);
+    }
   }
 
   /** Runs the drive in a straight line with the specified drive output. */

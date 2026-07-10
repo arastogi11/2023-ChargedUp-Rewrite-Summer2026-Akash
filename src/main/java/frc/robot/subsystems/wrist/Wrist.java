@@ -6,6 +6,7 @@ package frc.robot.subsystems.wrist;
 
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.WristConstants;
+import frc.robot.util.LoggingControl;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -41,8 +42,11 @@ public class Wrist extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // updateInputs always runs; recording is skippable -- see LoggingControl's javadoc.
     io.updateInputs(inputs);
-    Logger.processInputs("Wrist", inputs);
+    if (LoggingControl.enabled()) {
+      Logger.processInputs("Wrist", inputs);
+    }
   }
 
   public void setGoal(Position goal) {

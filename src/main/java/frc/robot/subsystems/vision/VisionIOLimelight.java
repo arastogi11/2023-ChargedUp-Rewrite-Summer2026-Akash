@@ -7,8 +7,6 @@ package frc.robot.subsystems.vision;
 import edu.wpi.first.math.geometry.Rotation2d;
 import frc.robot.subsystems.vision.LimelightHelpers.PoseEstimate;
 import frc.robot.subsystems.vision.VisionIO.PoseObservation;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -73,11 +71,17 @@ public class VisionIOLimelight implements VisionIO {
       return;
     }
 
-    Set<Integer> tagIds = new HashSet<>();
-    for (var fiducial : estimate.rawFiducials) {
-      tagIds.add(fiducial.id);
+    // Each raw fiducial in a single Limelight frame represents one distinct detected tag, so a
+    // direct primitive-int copy is enough here -- no need for a HashSet to deduplicate (which
+    // would cost a hash table plus one Integer box per tag, all just discarded every loop) or a
+    // stream (which boxes/unboxes internally). This runs every single loop this camera is
+    // enabled, so avoiding needless per-loop garbage matters more here than almost anywhere else
+    // in the codebase.
+    int[] tagIds = new int[estimate.rawFiducials.length];
+    for (int i = 0; i < estimate.rawFiducials.length; i++) {
+      tagIds[i] = estimate.rawFiducials[i].id;
     }
-    inputs.tagIds = tagIds.stream().mapToInt(Integer::intValue).toArray();
+    inputs.tagIds = tagIds;
 
     // Ambiguity is only meaningful for single-tag observations (multi-tag solves are already
     // well-constrained); MegaTag2 doesn't disambiguate per-tag the way MegaTag1 does, so fall

@@ -6,6 +6,7 @@ package frc.robot.subsystems.arm;
 
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.ArmConstants;
+import frc.robot.util.LoggingControl;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -41,8 +42,11 @@ public class Arm extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // updateInputs always runs; recording is skippable -- see LoggingControl's javadoc.
     io.updateInputs(inputs);
-    Logger.processInputs("Arm", inputs);
+    if (LoggingControl.enabled()) {
+      Logger.processInputs("Arm", inputs);
+    }
   }
 
   public void setGoal(Position goal) {

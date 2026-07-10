@@ -29,16 +29,28 @@ deploy {
                 // getTargetTypeClass is a shortcut to get the class type using a string
 
                 frcJava(getArtifactTypeClass('FRCJavaArtifact')) {
+                    // SerialGC is a good fit for the RIO's weak, few-core CPU (low overhead,
+                    // single-threaded collector, well suited to a constrained embedded system);
+                    // GCTimeRatio/MaxGCPauseMillis just tune how aggressively it reclaims memory
+                    // vs. how long a collection pause is allowed to run. None of this is
+                    // RIO-version-specific.
                     jvmArgs.add("-XX:+UnlockExperimentalVMOptions")
                     jvmArgs.add("-XX:GCTimeRatio=5")
                     jvmArgs.add("-XX:+UseSerialGC")
                     jvmArgs.add("-XX:MaxGCPauseMillis=50")
 
-                    // The options below may improve performance, but should only be enabled on the RIO 2
-                    final MAX_JAVA_HEAP_SIZE_MB = 100;
-                    jvmArgs.add("-Xmx" + MAX_JAVA_HEAP_SIZE_MB + "M")
-                    jvmArgs.add("-Xms" + MAX_JAVA_HEAP_SIZE_MB + "M")
-                    jvmArgs.add("-XX:+AlwaysPreTouch")
+                    // Deliberately NOT setting a fixed -Xmx/-Xms/-XX:+AlwaysPreTouch here. This
+                    // block was copied forward from BobcatRobotics/177-Rebuilt's comp/2026
+                    // template (a roboRIO 2 project) during the initial rewrite, and its own
+                    // comment said "should only be enabled on the RIO 2" -- this repo targets the
+                    // real 2023 robot's roboRIO **1**, which has only 256MB of total RAM (vs.
+                    // RIO2's larger/faster memory). AlwaysPreTouch in particular force-commits the
+                    // entire heap immediately at boot rather than growing it lazily as needed,
+                    // which on a 256MB system leaves very little headroom for the OS, NetworkTables,
+                    // and camera streaming -- a plausible direct cause of the out-of-memory
+                    // behavior this project has seen. Leaving heap sizing unset lets the JVM size
+                    // itself against whatever RAM is actually available on the hardware it's
+                    // running on, rather than forcing a RIO2-appropriate number onto RIO1.
                 }
 
                 // Static files artifact

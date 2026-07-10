@@ -12,7 +12,8 @@ import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import java.util.LinkedList;
+import frc.robot.util.LoggingControl;
+import java.util.ArrayList;
 import java.util.List;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.LoggedNetworkBoolean;
@@ -28,6 +29,14 @@ import org.littletonrobotics.junction.networktables.LoggedNetworkBoolean;
  * would actually crash without the toggle; it exists so the driver has explicit, visible control
  * over whether vision is contributing to the pose estimate, and so the "disconnected" alerts don't
  * spam the dashboard for hardware that's intentionally absent.
+ *
+ * <p>Every AdvantageKit recording call below is separately gated by {@link LoggingControl} (the
+ * roboRIO 1 memory kill switch), but the pose-estimation math itself (reading camera inputs,
+ * running the reject-pose check, and calling {@code consumer.accept}) is never gated -- vision
+ * correction has to keep working even with detailed logging turned off. Building the
+ * accepted/rejected pose lists purely for logging is skipped entirely while logging is off, rather
+ * than built and then discarded, since those lists (and the array conversions/allocations that
+ * come with them) exist only to feed {@code Logger.recordOutput} and have no other purpose.
  */
 public class Vision extends SubsystemBase {
   private final VisionConsumer consumer;
@@ -63,7 +72,13 @@ public class Vision extends SubsystemBase {
 
   @Override
   public void periodic() {
-    Logger.recordOutput("Vision/Enabled", enabled.get());
+    // Read once per loop rather than calling LoggingControl.enabled() repeatedly below -- it's
+    // cheap either way, but this makes the gating below easier to follow.
+    boolean logging = LoggingControl.enabled();
+    if (logging) {
+      Logger.recordOutput("Vision/Enabled", enabled.get());
+    }
+
     if (!enabled.get()) {
       // Don't poll cameras or show "disconnected" warnings for hardware that's intentionally off.
       for (Alert alert : disconnectedAlerts) {
@@ -72,45 +87,60 @@ public class Vision extends SubsystemBase {
       return;
     }
 
-    List<Pose2d> allPosesAccepted = new LinkedList<>();
-    List<Pose2d> allPosesRejected = new LinkedList<>();
+    // null while logging is disabled -- nothing below should read these unless `logging` is true.
+    List<Pose2d> allPosesAccepted = logging ? new ArrayList<>() : null;
+    List<Pose2d> allPosesRejected = logging ? new ArrayList<>() : null;
 
     for (int cameraIndex = 0; cameraIndex < io.length; cameraIndex++) {
+      // Always runs -- this is what actually reads the camera and feeds pose corrections into
+      // the drivetrain, not just logging.
       io[cameraIndex].updateInputs(inputs[cameraIndex]);
-      Logger.processInputs("Vision/Camera" + cameraIndex, inputs[cameraIndex]);
+      if (logging) {
+        Logger.processInputs("Vision/Camera" + cameraIndex, inputs[cameraIndex]);
+      }
       disconnectedAlerts[cameraIndex].set(!inputs[cameraIndex].connected);
 
-      List<Pose2d> posesAccepted = new LinkedList<>();
-      List<Pose2d> posesRejected = new LinkedList<>();
+      List<Pose2d> posesAccepted = logging ? new ArrayList<>() : null;
+      List<Pose2d> posesRejected = logging ? new ArrayList<>() : null;
 
       for (var observation : inputs[cameraIndex].poseObservations) {
         if (VisionConstants.shouldRejectPose(observation)) {
-          posesRejected.add(observation.pose());
+          if (logging) {
+            posesRejected.add(observation.pose());
+          }
           continue;
         }
-        posesAccepted.add(observation.pose());
+        if (logging) {
+          posesAccepted.add(observation.pose());
+        }
 
         double xyStdDev = VisionConstants.xyStdDev(observation);
         Matrix<N3, N1> stdDevs = VecBuilder.fill(xyStdDev, xyStdDev, VisionConstants.thetaStdDev);
 
+        // Always runs, regardless of the logging toggle -- this is the actual vision-to-pose-
+        // estimator correction, not something logging-related.
         consumer.accept(observation.pose(), observation.timestamp(), stdDevs);
       }
 
-      // Logging accepted and rejected poses separately (rather than just the final fused pose)
-      // means you can open a match log in AdvantageScope afterward and actually see which specific
-      // vision readings were thrown out and why -- invaluable for diagnosing "why did the pose
-      // estimate jump" after the fact instead of only while it's happening live.
-      Logger.recordOutput(
-          "Vision/Camera" + cameraIndex + "/PosesAccepted", posesAccepted.toArray(new Pose2d[0]));
-      Logger.recordOutput(
-          "Vision/Camera" + cameraIndex + "/PosesRejected", posesRejected.toArray(new Pose2d[0]));
+      if (logging) {
+        // Logging accepted and rejected poses separately (rather than just the final fused pose)
+        // means you can open a match log in AdvantageScope afterward and actually see which
+        // specific vision readings were thrown out and why -- invaluable for diagnosing "why did
+        // the pose estimate jump" after the fact instead of only while it's happening live.
+        Logger.recordOutput(
+            "Vision/Camera" + cameraIndex + "/PosesAccepted", posesAccepted.toArray(new Pose2d[0]));
+        Logger.recordOutput(
+            "Vision/Camera" + cameraIndex + "/PosesRejected", posesRejected.toArray(new Pose2d[0]));
 
-      allPosesAccepted.addAll(posesAccepted);
-      allPosesRejected.addAll(posesRejected);
+        allPosesAccepted.addAll(posesAccepted);
+        allPosesRejected.addAll(posesRejected);
+      }
     }
 
-    Logger.recordOutput("Vision/Summary/PosesAccepted", allPosesAccepted.toArray(new Pose2d[0]));
-    Logger.recordOutput("Vision/Summary/PosesRejected", allPosesRejected.toArray(new Pose2d[0]));
+    if (logging) {
+      Logger.recordOutput("Vision/Summary/PosesAccepted", allPosesAccepted.toArray(new Pose2d[0]));
+      Logger.recordOutput("Vision/Summary/PosesRejected", allPosesRejected.toArray(new Pose2d[0]));
+    }
   }
 
   @FunctionalInterface

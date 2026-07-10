@@ -59,6 +59,32 @@ Add a toggle-switch widget bound to each of those two NT4 boolean topics in your
 (drag them in from the NT4 topic tree — Elastic doesn't require any special widget config or
 project-side layout file for this). Flip them on once the hardware is reinstalled.
 
+## roboRIO 1 memory
+
+The real 2023 robot runs on a **roboRIO 1** (256MB total RAM — much less than a roboRIO 2), which
+can run low on memory if logging volume gets too high. Two things address this:
+
+- **`build.gradle`'s JVM args no longer force a fixed 100MB heap with `-XX:+AlwaysPreTouch`.** That
+  block was copied forward from `BobcatRobotics/177-Rebuilt`'s `comp/2026` template (a roboRIO 2
+  project) during the initial rewrite, and its own comment said "should only be enabled on the RIO
+  2" — `AlwaysPreTouch` force-commits the whole heap immediately at boot, which on a 256MB system
+  leaves very little room for the OS, NetworkTables, and camera streaming. Heap sizing is now left
+  unset, so the JVM sizes itself against whatever RAM is actually available.
+- **`/DriverDashboard/LoggingEnabled`** (`frc.robot.util.LoggingControl`, default **on**) — a
+  dashboard kill switch for detailed AdvantageKit logging. While off, every subsystem still reads
+  its sensors and runs its control logic completely normally (nothing about robot *behavior*
+  changes), but the expensive part — serializing the full sensor/output struct to the USB log file
+  and the live NT4 publisher every loop, for every subsystem — is skipped. Bind it to a
+  toggle-switch widget in Elastic like the other two toggles above; flip it off mid-match if
+  logging ever seems to be contributing to instability. (Only takes effect on the real robot —
+  sim/replay runs on a desktop with vastly more RAM and always logs in full, since replay
+  specifically depends on every input being recorded to work at all.)
+
+Vision's per-loop allocations were also tightened (`VisionIOLimelight`'s tag-ID collection no
+longer allocates a `HashSet` + boxes every ID; `Vision`'s accepted/rejected pose bookkeeping uses
+`ArrayList` instead of `LinkedList` and is skipped entirely while the logging toggle above is off,
+since those lists exist purely to feed the log).
+
 ## Known bugs fixed (not carried forward)
 
 - **Arm/Wrist duplicated control loop**: the 2023 robot configured Motion Magic gains on the

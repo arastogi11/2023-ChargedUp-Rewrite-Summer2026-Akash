@@ -6,6 +6,7 @@ package frc.robot.subsystems.elevator;
 
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants.ElevatorConstants;
+import frc.robot.util.LoggingControl;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -43,8 +44,12 @@ public class Elevator extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // Always runs, regardless of the logging kill switch -- the bottom-limit auto-zero below
+    // depends on fresh inputs every loop. See LoggingControl's javadoc.
     io.updateInputs(inputs);
-    Logger.processInputs("Elevator", inputs);
+    if (LoggingControl.enabled()) {
+      Logger.processInputs("Elevator", inputs);
+    }
 
     // Re-zero automatically at the bottom hard stop, same behavior as the 2023 robot.
     if (inputs.atBottomLimit) {
