@@ -40,6 +40,14 @@ public class Vision extends SubsystemBase {
   // Java APIs. Bind it to a toggle-switch widget in the Elastic layout.
   private final LoggedNetworkBoolean enabled = new LoggedNetworkBoolean("/DriverDashboard/VisionEnabled", false);
 
+  /**
+   * @param consumer where accepted vision measurements get sent -- in practice always {@code
+   *     Drive::addVisionMeasurement}, but taking a functional interface instead of a direct {@code
+   *     Drive} reference means this class doesn't need to import or know about {@code Drive} at
+   *     all, which keeps the two subsystems decoupled (Vision could feed any pose consumer, not
+   *     specifically a swerve drivetrain).
+   * @param io one {@link VisionIO} per physical camera (varargs -- pass as many as you have).
+   */
   public Vision(VisionConsumer consumer, VisionIO... io) {
     this.consumer = consumer;
     this.io = io;
@@ -88,6 +96,10 @@ public class Vision extends SubsystemBase {
         consumer.accept(observation.pose(), observation.timestamp(), stdDevs);
       }
 
+      // Logging accepted and rejected poses separately (rather than just the final fused pose)
+      // means you can open a match log in AdvantageScope afterward and actually see which specific
+      // vision readings were thrown out and why -- invaluable for diagnosing "why did the pose
+      // estimate jump" after the fact instead of only while it's happening live.
       Logger.recordOutput(
           "Vision/Camera" + cameraIndex + "/PosesAccepted", posesAccepted.toArray(new Pose2d[0]));
       Logger.recordOutput(

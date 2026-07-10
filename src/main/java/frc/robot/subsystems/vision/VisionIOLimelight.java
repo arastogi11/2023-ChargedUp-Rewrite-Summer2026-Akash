@@ -19,16 +19,28 @@ public class VisionIOLimelight implements VisionIO {
   private final String name;
   private final Supplier<Rotation2d> gyroYawSupplier;
 
+  /**
+   * @param name the Limelight's configured hostname/NetworkTables table name (e.g.
+   *     "limelight-front") -- must match what's set in the Limelight's own web UI.
+   * @param gyroYawSupplier where to read the current gyro heading from (usually {@code
+   *     Drive::getRotation}) -- MegaTag2 needs this pushed to the camera every loop, see {@link
+   *     #updateInputs}.
+   */
   public VisionIOLimelight(String name, Supplier<Rotation2d> gyroYawSupplier) {
     this.name = name;
     this.gyroYawSupplier = gyroYawSupplier;
 
+    // One-time setup, done once at construction rather than every loop: tell this specific
+    // Limelight which AprilTag IDs are worth reporting at all (see VisionConstants javadoc for
+    // why this allowlist idea is carried over from 2024), and where on the robot it's physically
+    // mounted (used by the Limelight's own onboard pose-solving math).
     LimelightHelpers.SetFiducialIDFiltersOverride(name, VisionConstants.validFiducialIds);
     var camera = camera();
     LimelightHelpers.setCameraPose_RobotSpace(
         name, camera.forward(), camera.side(), camera.up(), camera.roll(), camera.pitch(), camera.yaw());
   }
 
+  /** Looks up this camera's mount-offset config from VisionConstants by name. */
   private VisionConstants.CameraConfig camera() {
     for (var c : VisionConstants.cameras) {
       if (c.name().equals(name)) {
@@ -40,12 +52,19 @@ public class VisionIOLimelight implements VisionIO {
 
   @Override
   public void updateInputs(VisionIOInputs inputs) {
-    // MegaTag2 requires the current gyro yaw to be pushed to the Limelight every loop.
+    // MegaTag2 is Limelight's gyro-assisted pose-solving algorithm: rather than computing
+    // rotation purely from what it sees (which is noisier), it trusts the robot's own gyro for
+    // heading and only solves for position -- which is why the current heading has to be pushed
+    // to the camera every single loop, before asking it for a pose estimate.
     LimelightHelpers.SetRobotOrientation(
         name, gyroYawSupplier.get().getDegrees(), 0, 0, 0, 0, 0);
 
     PoseEstimate estimate = LimelightHelpers.getBotPoseEstimate_wpiBlue_MegaTag2(name);
 
+    // getTV ("target valid") is Limelight's own basic "do I currently see any AprilTag at all"
+    // flag; combined with a non-null estimate, this is as close as NetworkTables-based vision gets
+    // to a real "is this camera actually connected and working" signal -- there's no persistent
+    // TCP-style connection to check the state of the way there is for a CAN device.
     inputs.connected = estimate != null && LimelightHelpers.getTV(name);
 
     if (estimate == null || estimate.tagCount == 0) {

@@ -61,9 +61,21 @@ public class VisionConstants {
    * came from.
    */
   public static boolean shouldRejectPose(VisionIO.PoseObservation observation) {
-    return observation.tagCount() == 0
+    return observation.tagCount() == 0 // No tags visible -- nothing to compute a pose from.
+        // "Ambiguity" is how confident the camera's solver is in a single-tag pose solve (a lone
+        // flat AprilTag can sometimes be explained almost equally well by two different camera
+        // positions/angles -- classic "pose ambiguity" in computer vision). Multiple tags at once
+        // resolve that ambiguity geometrically, so this check only applies with exactly one tag
+        // visible.
         || (observation.tagCount() == 1 && observation.ambiguity() > maxAmbiguity)
+        // Farther-away tags produce noisier pose estimates (small pixel errors translate to larger
+        // real-world position errors), so reject anything past a sanity-check distance outright
+        // rather than just trusting it less (see xyStdDev below for the "trust it less" half of
+        // this idea, applied to everything that isn't rejected).
         || observation.avgTagDistMeters() > maxTagDistanceMeters
+        // A correct pose can never fall outside the physical field -- if the camera's solve says
+        // otherwise, something went wrong (misidentified tag, reflection, etc.) and the reading
+        // should be thrown out rather than corrupting the pose estimator.
         || observation.pose().getX() < 0.0
         || observation.pose().getX() > aprilTagLayout.getFieldLength()
         || observation.pose().getY() < 0.0
