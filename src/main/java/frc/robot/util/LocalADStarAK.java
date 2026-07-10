@@ -24,7 +24,14 @@ import org.littletonrobotics.junction.inputs.LoggableInputs;
 
 // NOTE: This file is available at
 // https://gist.github.com/mjansen4857/a8024b55eb427184dbd10ae8923bd57d
-// Wraps PathPlanner's LocalADStar pathfinder so its state is AdvantageKit-logged/replayable.
+//
+// PathPlanner's plain LocalADStar pathfinder runs its own internal search state that Vision/Drive
+// know nothing about -- if it ran unmodified, every REPLAY playback would re-run that search fresh
+// and could get a slightly different (or slower/faster) result than the original live run,
+// breaking bit-for-bit reproducibility. This wrapper routes every read/write of that pathfinder
+// state through AdvantageKit's Logger (see the `if (!Logger.hasReplaySource())` guards below) so
+// during REAL/SIM the search runs and gets logged normally, but during REPLAY the search is
+// skipped entirely and the exact previously-logged results are replayed back instead.
 
 public class LocalADStarAK implements Pathfinder {
   private final ADStarIO io = new ADStarIO();

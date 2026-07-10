@@ -30,7 +30,15 @@ import java.util.List;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
+/**
+ * Command factories for driving the robot -- joystick teleop control plus a handful of
+ * characterization routines used to derive real tuning constants from the physical robot (see
+ * {@code RobotContainer}'s auto chooser for how these get exposed on the dashboard).
+ */
 public class DriveCommands {
+  // How much stick deflection near center gets ignored entirely -- joysticks rarely rest at
+  // perfectly 0.0 due to small mechanical/electrical noise, so without a deadband the robot would
+  // creep even with the sticks "released."
   private static final double DEADBAND = 0.1;
   private static final double ANGLE_KP = 5.0;
   private static final double ANGLE_KD = 0.4;
@@ -43,15 +51,26 @@ public class DriveCommands {
 
   private DriveCommands() {}
 
+  /**
+   * Converts raw x/y joystick axis values into a direction + magnitude (0.0-1.0) translation
+   * vector, with deadbanding and a magnitude-squaring curve applied.
+   */
   public static Translation2d getLinearVelocityFromJoysticks(double x, double y) {
-    // Apply deadband
+    // Deadband the combined magnitude (not x and y separately) so the deadband region is a circle
+    // around center rather than a square -- otherwise diagonal stick positions near center would
+    // be treated inconsistently from straight ones.
     double linearMagnitude = MathUtil.applyDeadband(Math.hypot(x, y), DEADBAND);
     Rotation2d linearDirection = new Rotation2d(Math.atan2(y, x));
 
-    // Square magnitude for more precise control
+    // Squaring the magnitude (while keeping direction unchanged) gives finer control near the
+    // center of the stick's range and still reaches full speed at full deflection -- half stick
+    // deflection becomes a quarter of max speed instead of half, which feels much less twitchy for
+    // small driver inputs.
     linearMagnitude = linearMagnitude * linearMagnitude;
 
-    // Return new linear velocity
+    // A slightly roundabout way to build a vector of the given magnitude pointed in the given
+    // direction: start at the origin facing linearDirection, then "transform" by moving
+    // linearMagnitude forward along that heading, and read off where that landed.
     return new Pose2d(Translation2d.kZero, linearDirection)
         .transformBy(new Transform2d(linearMagnitude, 0.0, Rotation2d.kZero))
         .getTranslation();
@@ -104,6 +123,13 @@ public class DriveCommands {
                   linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec() * speedScalar,
                   linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec() * speedScalar,
                   omega * drive.getMaxAngularSpeedRadPerSec() * speedScalar);
+          // "Field relative" driving means pushing the stick forward always drives toward the
+          // far end of the field, regardless of which way the robot itself is currently facing
+          // -- much more intuitive for a driver than "robot relative," where forward always means
+          // whatever direction the chassis happens to be pointed. WPILib's field-relative
+          // convention is always from the blue alliance's perspective, so on red alliance the
+          // driver's "forward" needs to be flipped 180 degrees to still mean "away from your own
+          // driver station."
           boolean isFlipped =
               DriverStation.getAlliance().isPresent()
                   && DriverStation.getAlliance().get() == Alliance.Red;
@@ -175,6 +201,13 @@ public class DriveCommands {
    * Measures the velocity feedforward constants for the drive motors.
    *
    * <p>This command should only be used in voltage control mode.
+   *
+   * <p>This is a simpler, hand-rolled alternative to running full WPILib SysId (see {@code
+   * Drive.sysIdQuasistatic}/{@code sysIdDynamic}): ramp voltage up slowly and linearly while
+   * recording (voltage, resulting velocity) pairs, then fit a straight line through those points
+   * via linear regression (the least-squares formulas below) -- the line's y-intercept is kS
+   * (voltage needed before the robot starts moving at all) and its slope is kV (extra voltage
+   * needed per unit of additional speed).
    */
   public static Command feedforwardCharacterization(Drive drive) {
     List<Double> velocitySamples = new LinkedList<>();
@@ -234,7 +267,17 @@ public class DriveCommands {
                 }));
   }
 
-  /** Measures the robot's wheel radius by spinning in a circle. */
+  /**
+   * Measures the robot's wheel radius by spinning in a circle.
+   *
+   * <p>The idea: spin the whole robot chassis in place at a slow, steady rate. The gyro reports
+   * exactly how far the chassis rotated (in radians); geometrically, the same rotation means each
+   * wheel must have traveled {@code gyroDelta * DRIVE_BASE_RADIUS} meters of arc along its own
+   * circular path around the robot's center. Comparing that true arc-length distance to how far the
+   * wheel *encoders* reported traveling (in wheel rotations) reveals the actual effective wheel
+   * radius -- useful because tire wear/compression means the true rolling radius is rarely exactly
+   * what's printed on the tire.
+   */
   public static Command wheelRadiusCharacterization(Drive drive) {
     SlewRateLimiter limiter = new SlewRateLimiter(WHEEL_RADIUS_RAMP_RATE);
     WheelRadiusCharacterizationState state = new WheelRadiusCharacterizationState();

@@ -21,6 +21,13 @@ import frc.robot.subsystems.wrist.Wrist;
 public final class ScoringCommands {
   private ScoringCommands() {}
 
+  /**
+   * Commands all three mechanisms to a named position simultaneously and returns immediately (each
+   * {@code setGoal} call just hands a new Motion Magic target to the motor controller -- the motors
+   * then move toward it on their own over the following loops, independent of this command, which
+   * is why this can be a quick {@code Commands.parallel} of {@code runOnce}s rather than something
+   * that waits for the mechanisms to actually arrive).
+   */
   private static Command moveTo(
       Elevator elevator, Arm arm, Wrist wrist, Elevator.Position e, Arm.Position a, Wrist.Position w) {
     return Commands.parallel(
@@ -47,7 +54,16 @@ public final class ScoringCommands {
         elevator, arm, wrist, Elevator.Position.HIGH, Arm.Position.HIGH_SCORE, Wrist.Position.HIGH_SCORE);
   }
 
-  /** Move to ground-pickup position and run the intake until a game piece is secured. */
+  /**
+   * Move to ground-pickup position and run the intake until a game piece is secured.
+   *
+   * <p>The shape every pickup command below follows: {@code moveTo(...)} (returns instantly, see
+   * its javadoc) {@code .andThen(...)} a command that keeps running the intake until {@code
+   * gamePieceSecured()} goes true, then {@code .finallyDo(intake::stop)} to guarantee the rollers
+   * stop -- {@code finallyDo} runs whether the command finished normally (piece secured) or was
+   * interrupted early (e.g. the driver switches to a different action mid-pickup), so the intake
+   * never gets left running by accident.
+   */
   public static Command groundPickup(Elevator elevator, Arm arm, Wrist wrist, Intake intake) {
     return moveTo(
             elevator,

@@ -16,8 +16,16 @@ import edu.wpi.first.math.util.Units;
 public final class FieldConstants {
   private FieldConstants() {}
 
+  // The 9 scoring node positions across all three grids, evenly spaced 22 inches apart along the
+  // field's Y axis starting from a fixed offset. Rotation2d(Math.PI) means each position faces
+  // 180 degrees -- i.e. the robot should be backed up to the grid, facing away from the field,
+  // when scoring (a common orientation for 2023's front-facing scoring mechanisms).
   public static final Pose2d[] scoringPositions = new Pose2d[9];
 
+  // A static initializer block: runs exactly once, the first time this class is loaded, before
+  // anything else touches scoringPositions -- used here instead of a giant list literal because
+  // the 9 positions follow a simple repeating pattern (each 22 inches over from the last) that's
+  // clearer expressed as a loop than typed out 9 times by hand.
   static {
     for (int i = 0; i < scoringPositions.length; i++) {
       scoringPositions[i] =
